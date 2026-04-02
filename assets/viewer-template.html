@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>skill-anything Eval Viewer</title>
+<style>
+:root{--bg:#0d1117;--surface:#161b22;--surface2:#1c2129;--border:#30363d;--text:#e6edf3;--text2:#8b949e;--accent:#58a6ff;--green:#3fb950;--red:#f85149;--yellow:#d29922;--orange:#db6d28;--font:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;--radius:8px}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:var(--font);background:var(--bg);color:var(--text);line-height:1.6}
+header{background:var(--surface);border-bottom:1px solid var(--border);padding:16px 24px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px}
+header h1{font-size:18px;font-weight:600}
+header h1 span{color:var(--accent)}
+.badges{display:flex;gap:8px;flex-wrap:wrap}
+.badge{padding:4px 12px;border-radius:20px;font-size:13px;font-weight:500;background:var(--surface2);border:1px solid var(--border)}
+.badge.green{border-color:var(--green);color:var(--green)}
+.badge.yellow{border-color:var(--yellow);color:var(--yellow)}
+.badge.red{border-color:var(--red);color:var(--red)}
+nav{background:var(--surface);border-bottom:1px solid var(--border);padding:0 24px;display:flex;gap:0;overflow-x:auto}
+nav button{background:none;border:none;border-bottom:2px solid transparent;color:var(--text2);padding:10px 16px;cursor:pointer;font-size:14px;font-family:var(--font);white-space:nowrap;transition:color .15s,border-color .15s}
+nav button:hover{color:var(--text)}
+nav button.active{color:var(--accent);border-bottom-color:var(--accent)}
+main{max-width:1200px;margin:0 auto;padding:24px}
+section{display:none}
+section.active{display:block}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;margin-bottom:16px}
+.card h3{font-size:15px;margin-bottom:12px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:768px){.grid2{grid-template-columns:1fr}}
+.output-card{background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:16px;position:relative}
+.output-card.winner{border-color:var(--green)}
+.output-label{display:inline-block;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:600;margin-bottom:8px}
+.label-with{background:rgba(56,139,253,.15);color:var(--accent)}
+.label-without{background:rgba(139,148,158,.15);color:var(--text2)}
+.winner-badge{position:absolute;top:12px;right:12px;background:var(--green);color:#000;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:700}
+pre{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:12px;font-size:13px;line-height:1.5;overflow-x:auto;white-space:pre-wrap;word-break:break-word;max-height:400px;overflow-y:auto}
+.score-row{display:flex;align-items:center;gap:12px;padding:6px 0}
+.score-label{width:140px;font-size:13px;color:var(--text2);flex-shrink:0}
+.score-bar-bg{flex:1;height:8px;background:var(--bg);border-radius:4px;overflow:hidden}
+.score-bar{height:100%;border-radius:4px;transition:width .4s ease}
+.score-bar.green{background:var(--green)}
+.score-bar.yellow{background:var(--yellow)}
+.score-bar.red{background:var(--red)}
+.score-bar.accent{background:var(--accent)}
+.score-val{width:50px;text-align:right;font-size:13px;font-weight:600;flex-shrink:0}
+.feedback-box{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:12px;font-size:14px;margin-top:8px;color:var(--text)}
+textarea{width:100%;min-height:80px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:12px;color:var(--text);font-family:var(--font);font-size:14px;resize:vertical}
+textarea:focus{outline:none;border-color:var(--accent)}
+.btn{padding:8px 20px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer;font-size:14px;font-family:var(--font);transition:background .15s}
+.btn:hover{background:var(--surface2)}
+.btn.primary{background:var(--accent);color:#000;border-color:var(--accent);font-weight:600}
+.btn.primary:hover{opacity:.9}
+footer{border-top:1px solid var(--border);padding:16px 24px;display:flex;justify-content:flex-end;gap:12px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{padding:8px 12px;text-align:left;border-bottom:1px solid var(--border)}
+th{color:var(--text2);font-weight:600;text-transform:uppercase;font-size:12px;letter-spacing:.3px}
+.tag{display:inline-block;padding:1px 8px;border-radius:10px;font-size:12px;font-weight:500}
+.tag.win{background:rgba(63,185,80,.15);color:var(--green)}
+.tag.lose{background:rgba(248,81,73,.15);color:var(--red)}
+.tag.tie{background:rgba(210,153,34,.15);color:var(--yellow)}
+.history-bar{display:flex;align-items:flex-end;gap:4px;height:60px;margin-top:8px}
+.history-bar .bar{flex:1;background:var(--accent);border-radius:3px 3px 0 0;min-height:4px;position:relative;transition:height .3s}
+.history-bar .bar:hover::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 4px);left:50%;transform:translateX(-50%);background:var(--surface2);border:1px solid var(--border);padding:2px 8px;border-radius:4px;font-size:11px;white-space:nowrap}
+.eval-feedback-item{padding:8px 12px;background:var(--bg);border-radius:6px;margin-bottom:6px;font-size:13px;border-left:3px solid var(--yellow)}
+.empty-state{text-align:center;padding:40px;color:var(--text2);font-size:14px}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+const DATA = __DATA_PLACEHOLDER__;
+const feedbackStore = JSON.parse(localStorage.getItem('sa-feedback-'+DATA.iteration) || '{}');
+
+function render() {
+  const app = document.getElementById('app');
+  const tasks = DATA.evalTasks;
+  const scores = DATA.judgeScores;
+  const latestScore = DATA.history.length > 0 ? DATA.history[DATA.history.length-1].score : null;
+  const scoreBadgeClass = latestScore === null ? '' : latestScore >= 0.7 ? 'green' : latestScore >= 0.4 ? 'yellow' : 'red';
+
+  app.innerHTML = `
+    <header>
+      <h1><span>skill-anything</span> Eval Viewer</h1>
+      <div class="badges">
+        <span class="badge">Iteration ${DATA.iteration}</span>
+        ${latestScore !== null ? `<span class="badge ${scoreBadgeClass}">Score: ${(latestScore*100).toFixed(1)}%</span>` : ''}
+        <span class="badge">Cost: $${DATA.totalCostUsd.toFixed(2)}</span>
+        ${DATA.convergence.converged ? '<span class="badge green">Converged</span>' : ''}
+      </div>
+    </header>
+    <nav>
+      <button class="tab active" data-tab="overview">Overview</button>
+      ${tasks.map((t,i) => `<button class="tab" data-tab="task-${i}">${t.id}</button>`).join('')}
+    </nav>
+    <main>
+      <section id="sec-overview" class="active">
+        ${renderOverview()}
+      </section>
+      ${tasks.map((t,i) => `<section id="sec-task-${i}">${renderTask(t, i)}</section>`).join('')}
+    </main>
+    <footer>
+      <button class="btn" onclick="exportFeedback()">Export Feedback JSON</button>
+    </footer>
+  `;
+  attachListeners();
+}
+
+function renderOverview() {
+  const scores = DATA.judgeScores;
+  const history = DATA.history;
+
+  let benchmarkHtml = '';
+  if (scores.length > 0) {
+    const rows = scores.map(s => {
+      const c = s.channels;
+      const tEff = c.trajectoryEfficiency;
+      const trajScore = tEff.toolCallsWithout > 0 ? Math.max(0, 1 - tEff.toolCallsWith/tEff.toolCallsWithout) : 0;
+      const composite = (c.executionPass ? 0.2 : 0) + c.assertionCoverage*0.25 + (c.llmJudgeScore/5)*0.35 + trajScore*0.2;
+      const bc = s.blindComparison || {};
+      const winTag = bc.skillWon === 'yes' ? '<span class="tag win">Skill Won</span>'
+                   : bc.skillWon === 'no' ? '<span class="tag lose">Skill Lost</span>'
+                   : '<span class="tag tie">Tie</span>';
+      return `<tr>
+        <td>${s.taskId}</td>
+        <td>${c.executionPass ? '\u2705' : '\u274c'}</td>
+        <td>${(c.assertionCoverage*100).toFixed(0)}%</td>
+        <td>${c.llmJudgeScore.toFixed(1)}/5</td>
+        <td>${tEff.toolCallsWith} vs ${tEff.toolCallsWithout}</td>
+        <td>${(composite*100).toFixed(1)}%</td>
+        <td>${winTag}</td>
+      </tr>`;
+    }).join('');
+    benchmarkHtml = `<div class="card"><h3>Benchmark Summary</h3>
+      <table><thead><tr><th>Task</th><th>Exec</th><th>Assertions</th><th>LLM Score</th><th>Tool Calls (W/WO)</th><th>Composite</th><th>Blind Result</th></tr></thead>
+      <tbody>${rows}</tbody></table></div>`;
+  }
+
+  let historyHtml = '';
+  if (history.length > 0) {
+    const maxScore = Math.max(...history.map(h => h.score), 0.01);
+    const bars = history.map(h => {
+      const pct = (h.score / maxScore) * 100;
+      return `<div class="bar" style="height:${pct}%" data-tip="Iter ${h.iteration}: ${(h.score*100).toFixed(1)}%"></div>`;
+    }).join('');
+    historyHtml = `<div class="card"><h3>Score History</h3><div class="history-bar">${bars}</div></div>`;
+  }
+
+  let evalFeedbackHtml = '';
+  const allEvalFb = scores.filter(s => s.evalFeedback?.suggestions?.length > 0 || s.evalFeedback?.repeatedWorkPatterns?.length > 0);
+  if (allEvalFb.length > 0) {
+    const items = allEvalFb.flatMap(s => {
+      const parts = [];
+      for (const sug of (s.evalFeedback?.suggestions || [])) {
+        parts.push(`<div class="eval-feedback-item"><strong>${s.taskId}</strong>${sug.assertion ? ` [\u201c${sug.assertion}\u201d]` : ''}: ${sug.reason}</div>`);
+      }
+      for (const pat of (s.evalFeedback?.repeatedWorkPatterns || [])) {
+        parts.push(`<div class="eval-feedback-item" style="border-left-color:var(--orange)"><strong>${s.taskId}</strong> Repeated pattern: ${pat}</div>`);
+      }
+      return parts;
+    }).join('');
+    evalFeedbackHtml = `<div class="card"><h3>Eval Quality Feedback</h3>${items}</div>`;
+  }
+
+  if (!benchmarkHtml && !historyHtml) {
+    return '<div class="empty-state">No evaluation data yet. Run eval and judge first.</div>';
+  }
+
+  return historyHtml + benchmarkHtml + evalFeedbackHtml;
+}
+
+function renderTask(task, idx) {
+  const result = DATA.evalResults.find(r => r.taskId === task.id);
+  const score = DATA.judgeScores.find(s => s.taskId === task.id);
+
+  let outputsHtml = '<div class="empty-state">No runner outputs available.</div>';
+  if (result) {
+    const withLabel = '<span class="output-label label-with">With Skill</span>';
+    const withoutLabel = '<span class="output-label label-without">Without Skill</span>';
+    const isSkillWinner = score?.blindComparison?.skillWon === 'yes';
+    const isBaselineWinner = score?.blindComparison?.skillWon === 'no';
+    outputsHtml = `<div class="grid2">
+      <div class="output-card ${isSkillWinner ? 'winner' : ''}">
+        ${withLabel}
+        ${isSkillWinner ? '<span class="winner-badge">WINNER</span>' : ''}
+        <p style="font-size:13px;color:var(--text2);margin-bottom:8px">Tool calls: ${result.withSkill.toolUseCount} | Files: ${result.withSkill.createdFiles.length}</p>
+        <pre>${escHtml(result.withSkill.text.slice(0, 3000))}${result.withSkill.text.length > 3000 ? '\n... (truncated)' : ''}</pre>
+      </div>
+      <div class="output-card ${isBaselineWinner ? 'winner' : ''}">
+        ${withoutLabel}
+        ${isBaselineWinner ? '<span class="winner-badge">WINNER</span>' : ''}
+        <p style="font-size:13px;color:var(--text2);margin-bottom:8px">Tool calls: ${result.withoutSkill.toolUseCount} | Files: ${result.withoutSkill.createdFiles.length}</p>
+        <pre>${escHtml(result.withoutSkill.text.slice(0, 3000))}${result.withoutSkill.text.length > 3000 ? '\n... (truncated)' : ''}</pre>
+      </div>
+    </div>`;
+  }
+
+  let scoresHtml = '';
+  if (score) {
+    const c = score.channels;
+    const tEff = c.trajectoryEfficiency;
+    const trajScore = tEff.toolCallsWithout > 0 ? Math.max(0, 1 - tEff.toolCallsWith/tEff.toolCallsWithout) : 0;
+    scoresHtml = `<div class="card"><h3>Scores</h3>
+      ${scoreBar('Execution', c.executionPass ? 1 : 0, c.executionPass ? 'Pass' : 'Fail')}
+      ${scoreBar('Assertions', c.assertionCoverage, (c.assertionCoverage*100).toFixed(0)+'%')}
+      ${scoreBar('LLM Judge', c.llmJudgeScore/5, c.llmJudgeScore.toFixed(1)+'/5')}
+      ${scoreBar('Trajectory', trajScore, trajScore.toFixed(2))}
+    </div>
+    <div class="card"><h3>Blind Comparison</h3>
+      <p style="margin-bottom:8px"><strong>Winner:</strong> Output ${score.blindComparison?.winner || 'N/A'}
+      (Skill was Output ${score.blindComparison?.skillWasOutput || '?'})
+      — <span class="tag ${score.blindComparison?.skillWon === 'yes' ? 'win' : score.blindComparison?.skillWon === 'no' ? 'lose' : 'tie'}">${
+        score.blindComparison?.skillWon === 'yes' ? 'Skill Won' : score.blindComparison?.skillWon === 'no' ? 'Skill Lost' : 'Tie'
+      }</span></p>
+      <div class="feedback-box">${escHtml(score.blindComparison?.reasoning || '')}</div>
+    </div>
+    <div class="card"><h3>Judge Feedback</h3>
+      <div class="feedback-box">${escHtml(score.feedback)}</div>
+      <h3 style="margin-top:16px">Improvement Suggestion</h3>
+      <div class="feedback-box">${escHtml(score.suggestion)}</div>
+    </div>`;
+  }
+
+  const savedFb = feedbackStore[task.id] || '';
+  return `
+    <div class="card"><h3>Task: ${task.id}</h3>
+      <p>${escHtml(task.description)}</p>
+      <p style="margin-top:8px;color:var(--text2);font-size:13px"><strong>Expected:</strong> ${task.expectedBehavior.map(b => escHtml(b)).join(' | ')}</p>
+      <p style="color:var(--text2);font-size:13px"><strong>Criteria:</strong> ${escHtml(task.judgingCriteria)}</p>
+    </div>
+    ${outputsHtml}
+    ${scoresHtml}
+    <div class="card"><h3>Your Feedback</h3>
+      <textarea placeholder="Leave your feedback for this task..." data-task="${task.id}" oninput="saveFeedback(this)">${escHtml(savedFb)}</textarea>
+    </div>
+  `;
+}
+
+function scoreBar(label, value, display) {
+  const pct = Math.max(0, Math.min(1, value)) * 100;
+  const cls = pct >= 70 ? 'green' : pct >= 40 ? 'yellow' : 'red';
+  return `<div class="score-row">
+    <span class="score-label">${label}</span>
+    <div class="score-bar-bg"><div class="score-bar ${cls}" style="width:${pct}%"></div></div>
+    <span class="score-val">${display}</span>
+  </div>`;
+}
+
+function escHtml(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function attachListeners() {
+  document.querySelectorAll('nav button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('main section').forEach(s => s.classList.remove('active'));
+      btn.classList.add('active');
+      const tab = btn.dataset.tab;
+      const sec = tab === 'overview' ? document.getElementById('sec-overview') : document.getElementById('sec-'+tab);
+      if (sec) sec.classList.add('active');
+    });
+  });
+}
+
+function saveFeedback(el) {
+  feedbackStore[el.dataset.task] = el.value;
+  localStorage.setItem('sa-feedback-'+DATA.iteration, JSON.stringify(feedbackStore));
+}
+
+function exportFeedback() {
+  const reviews = Object.entries(feedbackStore).map(([taskId, feedback]) => ({
+    taskId, feedback, timestamp: new Date().toISOString()
+  }));
+  const blob = new Blob([JSON.stringify({ iteration: DATA.iteration, reviews, status: 'complete' }, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'feedback-iter-' + DATA.iteration + '.json';
+  a.click();
+}
+
+render();
+</script>
+</body>
+</html>
