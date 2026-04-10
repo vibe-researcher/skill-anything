@@ -6,7 +6,7 @@ description: >-
   但表现不佳的框架/工具库（如 Tailwind CSS v4、MCP SDK）。
 metadata:
   author: skill-anything
-  version: "0.4.0"
+  version: "0.9.0"
 ---
 
 # skill-anything
@@ -28,29 +28,66 @@ metadata:
 
 ### 核心原则
 
+- **公平基线**：Runner+S 和 Runner-S 都有 repo/ 副本——Eval 测量"蒸馏态 Skill + repo vs 仅 repo"，而非"有文档 vs 无文档"。Skill 的价值必须超越"直接读 repo"
 - **上下文隔离**：Eval Designer 看不到 Skill，Judge 不知道哪个是 Skill 输出，Runner+S 和 Runner-S 独立运行
-- **文件系统即状态**：通过 workspace 中文件的存在性判断进度，不需要额外状态机
-- **简洁性准则**：删除后效果不降 = 胜利。同时适用于 Skill 内容和系统本身
+- **磁盘即状态**：通过 `orchestrator-state.json` 和产出文件追踪进度，Orchestrator 可随时中断和恢复
+- **Orchestrator 不做分析**：你不读文件做判断（域划分、重要性排序）。这些是 Researcher 的工作。你只读脚本 stdout（< 3 行）和子代理写入的摘要文件（< 50 行）。机械操作（盲化、评分、收敛）交给脚本
+- **蒸馏优先级**：Skill 是知识结晶，不是 API 手册。四级知识分类按蒸馏价值排序：cognitive（最高）> gotcha > pattern > api（最低）。Skill 正文分为 Meta Layer（≥50%，跨框架通用认知）和 Implementation Layer（repo 特定用法）
+- **多维度评估**：Eval task 包含 coding（含调试/陷阱检测）、reasoning、transfer 三种类型（reasoning + transfer ≥ 40%），测量从 API 调用到知识内化的全谱系
+- **简洁性准则**：删除后效果不降 = 胜利。知识密度（composite_score / line_count）是效率指标
+
+### Orchestrator 上下文管理
+
+你的对话上下文是**有限且不可逆**的资源。以下规则防止上下文耗尽：
+
+#### 子代理返回协议
+
+所有 Task 子代理必须将主要产出**写入文件**，返回文本 < 500 字符。在每个子代理的任务提示末尾附加：
+
+```
+完成后将所有产出写入指定文件。返回简短摘要（< 500 字符），格式：
+STATUS: success | partial | failed
+OUTPUT_FILES: <产出文件路径>
+SUMMARY: <1-2 句话概括>
+```
+
+#### Orchestrator 自身约束
+
+- **不要 Read 超过 100 行的文件**：用 offset+limit 读关键段落，或让子代理/脚本处理
+- **不要在上下文中做数据转换**：盲化、反盲化、评分计算全部用 `scripts/` 中的脚本
+- **读摘要不读原文**：迭代循环中读 `iteration-summary.json`（~20 行），不读完整的 `judge-scores.json`
+
+#### 恢复机制
+
+如果会话因上下文耗尽或其他原因中断：
+
+1. 新会话中读取 `workspace/orchestrator-state.json`
+2. 根据 `phase` 和 `step` 字段确定当前位置
+3. 从中断处继续，不重复已完成的工作
+
+#### 检查点
+
+每完成一个主要阶段（研究、初始生成、每轮迭代），更新 `orchestrator-state.json` 并建议用户执行 `/compact`（压缩对话历史），降低后续上下文压力。格式：
+
+> ✅ <阶段名> 完成。建议执行 `/compact` 压缩对话历史后继续。
 
 ### 如何调度子代理
 
-当需要子代理完成某项工作时：
-
-1. 读取对应的 `agents/<role>.md` 文件，了解该角色的职责和输出格式
-2. Spawn 一个子代理（使用 Task tool 或其他可用的子代理机制），将 agents 文件内容 + 任务提示一起传入
-3. 指定子代理的工作目录
-4. 子代理完成后，读取其产出的文件，做下一步决策
-
-每个子代理独立工作、独立上下文，完成后你只读取它写入的文件。
+1. 读取对应的 `agents/<role>.md`，了解职责和输出格式
+2. Spawn 子代理（Task tool），传入 agents 文件内容 + 任务提示 + **返回协议**
+3. 指定工作目录
+4. 子代理完成后，**读取其写入的文件**做下一步决策（不依赖返回文本中的数据）
 
 ---
 
 ### 工作空间设置
 
+**恢复检查**：如果 `workspace/orchestrator-state.json` 已存在，读取它，跳到对应阶段继续。不要重新初始化。
+
 首次运行时，初始化 workspace：
 
 ```bash
-mkdir -p workspace/{knowledge,skills,evals/results,logs}
+mkdir -p workspace/{knowledge/domains,skills,evals/results,logs}
 cd workspace
 git init
 echo "repo/\nlogs/" > .gitignore
@@ -58,42 +95,106 @@ git add -A && git commit -m "workspace initialized" --allow-empty
 echo "iteration\tcomposite\tcost_usd\tstatus\tdescription" > results.tsv
 ```
 
+初始化 `orchestrator-state.json`：
+
+```json
+{
+  "version": "0.9.0",
+  "repo_url": "<url>",
+  "phase": "research",
+  "step": "profile",
+  "research": { "profile": "pending", "researcher": "pending" },
+  "generation": { "skill_writer": "pending", "eval_designer": "pending" },
+  "iteration": { "current": 0, "scores": [] },
+  "notes": "workspace initialized"
+}
+```
+
+每完成一个步骤后，更新对应字段（如 `research.profile` → `"done"`，`phase` → 下一阶段）。
+
 ---
 
-### Stage 1: 研究 Repo
+### 流程概览
 
-读取 `agents/researcher.md`，spawn Researcher 子代理。
+**研究**（一次性）→ **初始生成**（bootstrap）→ **迭代循环**（至收敛）→ **产出**
+
+| 阶段 | 做什么 | 产出 |
+|------|--------|------|
+| 研究 | 脚本生成 profile → Researcher 自治深研 | `knowledge/knowledge-map.yaml` |
+| 初始生成 | Skill Writer + Eval Designer（隔离） | `skills/`, `evals/eval-tasks.json` |
+| 迭代循环 | Run → Judge → Score → Improve | `evals/results/iter-<N>/` |
+| 产出 | 向用户报告 | 最终 Skill 文件 |
+
+Skill Writer 和 Eval Designer 在初始生成和迭代循环中都会出现——初始生成是第一轮 bootstrap，后续轮次中 Skill Writer 改进 Skill、Eval Designer 可能重设计弱任务。
+
+---
+
+### 研究 Repo
+
+核心原则：**脚本提供事实，Researcher 做全部语义判断**。你不做域划分、不读分析文件、不决定研究策略——这些全部交给 Researcher 自治完成。
+
+#### 步骤 1：生成 repo profile（脚本）
+
+```bash
+cd workspace && git clone <url> repo/ 2>/dev/null || true
+python scripts/repo_manifest.py workspace/
+```
+
+stdout 打印 3 行摘要（文件数、语言、有无 docs/examples）。详情写入 `knowledge/repo-profile.yaml`。更新状态：`research.profile` → `"done"`。
+
+#### 步骤 2：spawn Researcher（统一，不分流）
+
+读取 `agents/researcher.md`，spawn 单个 Researcher 子代理。
 
 子代理任务提示：
 
 ```
-目标 repo: <url>
-Clone repo 到 ./repo/（如未 clone），深度研究。
-产出 knowledge/knowledge-map.yaml。
+repo 已 clone 到 ./repo/。
+结构化事实在 knowledge/repo-profile.yaml。
+可用辅助脚本：
+  - python scripts/extract_api_surface.py <files...> --output knowledge/api-surface.yaml
+  - python scripts/find_related_issues.py repo/ --keywords "<关键词>" --output knowledge/issues-summary.yaml
+自主制定研究计划，产出 knowledge/knowledge-map.yaml。
 完成后执行自洽性检验。
+完成后将所有产出写入指定文件。返回简短摘要（< 500 字符），格式：
+STATUS: success | partial | failed
+OUTPUT_FILES: <产出文件路径>
+SUMMARY: <1-2 句话概括>
 ```
 
 工作目录：`workspace/`
 
-完成后验证 `workspace/knowledge/knowledge-map.yaml` 存在且可解析。
+#### 步骤 3：验证与检查点
 
-**定向补研**：如果后续迭代中 Judge 反馈指出 Skill 缺少某方面知识，且 Knowledge Map 无对应域，再次 spawn Researcher 子代理做定向补研，指定具体要补充的知识点。
+验证 `workspace/knowledge/knowledge-map.yaml` 存在且可解析（有效 YAML、至少包含 2 个域）。
+
+如果 Knowledge Map 末尾有 `_补研建议`，spawn 补研 Researcher（传入具体域和文件范围）。
+
+更新状态：`research.researcher` → `"done"`，`phase` → `"generate"`。
+
+> ✅ 研究阶段完成。建议执行 `/compact` 压缩对话历史后继续。
+
+**后续补研**：迭代中 Judge 反馈指出知识缺口时，spawn Researcher 传入具体补研需求。
 
 ---
 
-### Stage 2: 初始生成
+### 初始生成
 
-#### 2a. 生成 Skill
+#### 生成 Skill
 
 读取 `agents/skill-writer.md`，spawn Skill Writer 子代理。
 
-子代理任务提示（首次）：
+子代理任务提示：
 
 ```
 读取 knowledge/knowledge-map.yaml。
 设计 Skill 拆分方案（基于域的自足性），生成 Skill 文件到 skills/ 目录。
 遵循 Anthropic SKILL.md 标准。
 执行自洽性检验。
+完成后将所有产出写入指定文件。返回简短摘要（< 500 字符），格式：
+STATUS: success | partial | failed
+OUTPUT_FILES: <产出文件路径>
+SUMMARY: <1-2 句话概括>
 ```
 
 工作目录：`workspace/`
@@ -104,13 +205,15 @@ Clone repo 到 ./repo/（如未 clone），深度研究。
 python scripts/validate_skill.py workspace/skills/<skill-name>
 ```
 
-保存快照：
+保存快照并更新状态：
 
 ```bash
 cd workspace && git add -A && git commit -m "initial skills" && git tag skill-v0
 ```
 
-#### 2b. 设计评估任务（与 Skill 隔离）
+更新状态：`generation.skill_writer` → `"done"`。
+
+#### 设计评估任务（与 Skill 隔离）
 
 **关键**：Eval Designer 不能看到 skills/ 目录。准备隔离环境：
 
@@ -128,9 +231,21 @@ cp -r workspace/knowledge "$TMPDIR/knowledge"
 设计有区分度的评估任务，写入 eval-tasks.json。
 你无法访问任何 Skill 文件——这是故意的，不要尝试寻找。
 执行自洽性检验。
+完成后将所有产出写入指定文件。返回简短摘要（< 500 字符），格式：
+STATUS: success | partial | failed
+OUTPUT_FILES: <产出文件路径>
+SUMMARY: <1-2 句话概括>
 ```
 
 工作目录：`$TMPDIR`（隔离目录）
+
+**轻量替代**：如果 `knowledge/domain-summary.yaml` 存在，可改为只复制摘要到隔离目录，进一步减少 Eval Designer 的上下文负载：
+
+```bash
+TMPDIR=$(mktemp -d)
+mkdir -p "$TMPDIR/knowledge"
+cp workspace/knowledge/domain-summary.yaml "$TMPDIR/knowledge/"
+```
 
 完成后：
 
@@ -139,194 +254,40 @@ cp "$TMPDIR/eval-tasks.json" workspace/evals/eval-tasks.json
 rm -rf "$TMPDIR"
 ```
 
----
+更新状态：`generation.eval_designer` → `"done"`，`phase` → `"iterate"`。
 
-### Stage 3: 迭代优化循环
-
-每轮迭代按 a → b → c → d 顺序执行。
-
-#### 3a. 运行对比评估
-
-对每个 eval task，**同时** spawn 两个 Runner 子代理（尽量并行）：
-
-**Runner+S（有 Skill）** — 准备临时目录并复制 skills/：
-
-```bash
-RUNDIR_WITH=$(mktemp -d)
-cp -r workspace/skills "$RUNDIR_WITH/skills"
-```
-
-子代理任务提示：
-
-```
-你是一个开发者 Agent。
-开始任务之前，先阅读 ./skills/ 目录下所有 SKILL.md 文件，将其中的指导作为知识基础。
-然后完成任务：<task description>
-```
-
-工作目录：`$RUNDIR_WITH`
-
-**Runner-S（无 Skill）** — 空临时目录：
-
-```bash
-RUNDIR_WITHOUT=$(mktemp -d)
-```
-
-子代理任务提示：
-
-```
-你是一个开发者 Agent。根据你已有的知识完成任务：<task description>
-```
-
-工作目录：`$RUNDIR_WITHOUT`
-
-收集每个 Runner 的返回结果——最终输出文本、工具调用次数、创建的文件。将所有结果写入 `workspace/evals/results/iter-<N>/eval-results.json`：
-
-```json
-{
-  "iteration": 1,
-  "tasks": [
-    {
-      "taskId": "task-id",
-      "withSkill": { "text": "...", "toolUseCount": 12, "toolUses": ["Read", "Write", ...], "createdFiles": [...] },
-      "withoutSkill": { "text": "...", "toolUseCount": 34, "toolUses": [...], "createdFiles": [...] }
-    }
-  ]
-}
-```
-
-#### 3b. 盲法评判
-
-准备盲化数据：对每个 task，随机决定 A/B 标签分配。
-
-```python
-import random
-# 对每个 task：
-a_is_with = random.random() > 0.5
-# 如果 a_is_with: Output A = withSkill, Output B = withoutSkill
-# 否则反过来
-```
-
-将盲化后的数据写入 `workspace/evals/results/iter-<N>/blinded-eval-results.json`，同时将映射关系记在 `blind-mapping.json` 中。
-
-读取 `agents/judge.md`，spawn Judge 子代理。
-
-子代理任务提示：
-
-```
-盲法评估：对每个 task 的 Output A 和 Output B 进行质量评判。
-你不知道哪个使用了 Skill——请纯粹基于输出质量评判。
-读取 evals/eval-tasks.json 了解任务定义。
-读取 evals/results/iter-<N>/blinded-eval-results.json 了解两个输出。
-对每个任务评分，写入 evals/results/iter-<N>/blind-judge-scores.json。
-执行自洽性检验。
-```
-
-工作目录：`workspace/`
-
-Judge 完成后，**你来反盲化**：根据 `blind-mapping.json` 将 A/B 标签映射回 with/without，计算 `skillWon` (yes/no/tie)，写入 `judge-scores.json`。
-
-反盲化后的 `judge-scores.json` 必须符合以下格式（viewer 和综合评分依赖此格式）：
-
-```json
-[
-  {
-    "taskId": "task-id",
-    "channels": {
-      "executionPass": true,
-      "assertionCoverage": 0.85,
-      "llmJudgeScore": 4.2,
-      "trajectoryEfficiency": {
-        "toolCallsWith": 12,
-        "toolCallsWithout": 34
-      }
-    },
-    "blindComparison": {
-      "winner": "A",
-      "skillWasOutput": "B",
-      "skillWon": "yes",
-      "reasoning": "Output A 完成了所有预期行为..."
-    },
-    "feedback": "获胜输出覆盖了核心 API 模式，但缺少错误处理...",
-    "suggestion": "增加 Tool handler 中的错误处理模式",
-    "evalFeedback": {
-      "suggestions": [
-        { "assertion": "断言内容", "reason": "该断言过于宽泛" }
-      ],
-      "repeatedWorkPatterns": ["两个输出都独立编写了 schema 验证辅助函数"]
-    }
-  }
-]
-```
-
-字段映射规则：
-- `channels` 取 **with-Skill 侧** 的评分（executionPass / assertionCoverage / llmJudgeScore 来自 Judge 对 Skill 输出的评分）
-- `trajectoryEfficiency` 的 toolCallsWith / toolCallsWithout 来自 `eval-results.json` 中的 toolUseCount
-- `blindComparison.skillWon`：winner 是 Skill 侧 → "yes"，winner 是 baseline → "no"，TIE → "tie"
-- `feedback` / `suggestion` / `evalFeedback` 直接取自 Judge 输出
-
-#### 3c. 计算综合评分并检查收敛
-
-综合评分公式：
-
-```
-composite = executionPass×0.2 + assertionCoverage×0.25 + (llmJudgeScore/5)×0.35 + trajectory×0.2
-其中 trajectory = max(0, 1 - toolCallsWith/toolCallsWithout)
-```
-
-取所有任务的 composite 均值。
-
-用收敛脚本检查是否收敛：
-
-```bash
-python scripts/convergence.py workspace/ <composite-score> --cost <本轮花费USD>
-```
-
-根据输出决策：
-
-- `converged: true` → 进入 Stage 4
-- `reason: "budget_exhausted"` → 停止，输出当前最优
-- `reason: "continuing"` → 继续 3d
-
-#### 3d. 改进 Skill
-
-**先判断是否有回归**：对比当前和上一轮每个 task 的得分，如果任何 task 下降 > 0.05：
-
-```bash
-cd workspace && git checkout skill-v<上一版> -- skills/
-```
-
-然后 spawn Skill Writer 时附带约束：`"REGRESSION on task-X. 修改必须解决反馈，同时不降低 task-X 得分。"`
-
-无回归时，正常 spawn Skill Writer 子代理：
-
-```
-改进 Skills。读取：
-1. knowledge/knowledge-map.yaml
-2. skills/ — 当前 Skill
-3. evals/results/iter-<N>/judge-scores.json — Judge 反馈
-执行自洽性检验。
-```
-
-保存快照：
-
-```bash
-cd workspace && git add -A && git commit -m "iter-N: <描述>" && git tag skill-v<N>
-```
-
-**Eval 自举**（可选）：如果多个 task 的 with/without 差异 < 0.1，说明 eval 区分度不够。重新 spawn Eval Designer（隔离环境）替换弱任务，回到 3a。
-
-**人类审查**（可选）：在需要人介入时（首次 eval set 审查、收敛后 spot check），生成 viewer：
-
-```bash
-python scripts/gen_viewer.py workspace/
-```
-
-自动在浏览器中打开交互式 HTML。用户点击 "Export Feedback JSON" 导出反馈文件。
+> ✅ 初始生成完成。建议执行 `/compact` 压缩对话历史后继续。
 
 ---
 
-### Stage 4: 产出
+### 迭代循环
+
+每轮按 Run → Blind → Judge → Score → Improve 执行，直到收敛。
+
+进入迭代时，读取 [`references/eval-loop.md`](references/eval-loop.md) 了解完整流程。
+
+**关键变化**（对比旧版本）：盲化和评分都由脚本完成，Orchestrator 不在上下文中做数据处理。
+
+```
+Run    → 收集 Runner 输出到 eval-results.json
+Blind  → python scripts/blind_eval.py workspace/ <N>
+Judge  → spawn Judge 子代理读盲化数据、写评分
+Score  → python scripts/deblind_and_score.py workspace/ <N> [--cost <usd>]
+         → stdout 打印 3 行摘要，详情写入 iteration-summary.json
+Improve → 读 iteration-summary.json，spawn Skill Writer 改进
+```
+
+每轮结束更新 `orchestrator-state.json`（`iteration.current`、`iteration.scores` 追加新分数）。
+
+**退出条件**：stdout 显示 `converged=True` → 产出 / `reason=budget_exhausted` → 停止输出当前最优
+
+> ✅ 第 N 轮迭代完成（composite=X.XX）。建议执行 `/compact` 压缩对话历史后继续。
+
+---
+
+### 产出
+
+更新状态：`phase` → `"done"`。
 
 收敛后，向用户报告：
 
@@ -336,6 +297,15 @@ python scripts/gen_viewer.py workspace/
 - `workspace/results.tsv` 实验日志
 
 最终 Skill 文件位于 `workspace/skills/`，可直接复制到用户的技能目录使用。
+
+**发布到 Catalog**（可选，用户确认后执行）：
+
+```bash
+python scripts/register_skill.py workspace/ <source-repo-url>
+python scripts/generate_catalog.py
+```
+
+这会将 Skill 复制到 `published/` 并更新 `registry.json`。推送到 main 后 GitHub Pages 自动部署更新的目录。
 
 ---
 
@@ -349,24 +319,29 @@ python scripts/gen_viewer.py workspace/
 4. **连续 3 轮无改善**（|Δs| < 0.02）→ 让 Skill Writer 从头重构，仍无效则判定收敛
 5. **子代理失败** → 最多重试 2 次
 
-### 评分公式参考
-
-```
-composite = executionPass×0.2 + assertionCoverage×0.25 + (llmJudgeScore/5)×0.35 + trajectory×0.2
-trajectory = max(0, 1 - toolCallsWith/toolCallsWithout)
-```
+评分公式见 [`references/eval-loop.md`](references/eval-loop.md) 的评分节。
 
 ### 辅助脚本
 
 | 脚本 | 用途 | 调用方式 |
 |------|------|----------|
+| `scripts/repo_manifest.py` | 扫描 repo 结构事实 | `python scripts/repo_manifest.py <workspace> [--repo <path>]` |
+| `scripts/extract_api_surface.py` | 批量提取文件签名 + docstring | `python scripts/extract_api_surface.py <files...> [--output <path>]` |
+| `scripts/find_related_issues.py` | 获取 GitHub issues 摘要（可选） | `python scripts/find_related_issues.py <repo-path> [--keywords kw1,kw2] [--output <path>]` |
+| `scripts/blind_eval.py` | 盲化 eval 结果 | `python scripts/blind_eval.py <workspace> <iteration>` |
+| `scripts/deblind_and_score.py` | 反盲化 + 评分 + 收敛检查 | `python scripts/deblind_and_score.py <workspace> <iteration> [--cost <usd>]` |
 | `scripts/convergence.py` | 收敛判定 + results.tsv 追加 | `python scripts/convergence.py <workspace> <score> [--cost <usd>] [--status keep\|discard] [--desc "text"]` |
 | `scripts/validate_skill.py` | 验证 Skill 格式合规性 | `python scripts/validate_skill.py <skill-dir>` |
 | `scripts/gen_viewer.py` | 生成 eval viewer HTML | `python scripts/gen_viewer.py <workspace> [iteration]` |
+| `scripts/summarize_knowledge.py` | 从 Knowledge Map 生成域摘要 | `python scripts/summarize_knowledge.py <workspace>` |
+| `scripts/register_skill.py` | 注册 Skill 到 registry | `python scripts/register_skill.py <workspace> <repo-url> [--name name]` |
+| `scripts/generate_catalog.py` | 从 registry 生成 catalog | `python scripts/generate_catalog.py` |
 
 ## Additional Resources
 
-- [Researcher 指南](agents/researcher.md) — 研究 repo、产出 Knowledge Map
+- [Researcher 指南](agents/researcher.md) — 深度研究 repo、产出 Knowledge Map
 - [Skill Writer 指南](agents/skill-writer.md) — Anthropic SKILL.md 标准、写作原则
 - [Eval Designer 指南](agents/eval-designer.md) — 评估任务设计、区分度原则
 - [Judge 指南](agents/judge.md) — 多通道评分、盲法评判流程
+- [迭代循环详情](references/eval-loop.md) — 对比评估、盲法评判、评分公式、收敛检查
+- [Catalog 元 Skill](catalog-skill/SKILL.md) — 已发布 Skill 的发现入口

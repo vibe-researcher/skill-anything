@@ -16,8 +16,10 @@ Agent 的能力上限 = 模型智能 × 可用上下文。
 
 开发生态中存在大量使用门槛高、隐性知识多、且版本迭代快的框架和工具 repo。Skill 是将这些**面向人的知识**转化为**面向 Agent 的知识**的最佳载体。
 
-> **Skill 的最大价值 = 把最新的框架知识注入到训练数据滞后的模型中。**
+> **Skill 是知识结晶，不是 API 手册。** Agent 读完 Skill 后应该"理解了这个领域"——能直接用内化的知识做出正确决策，而不只是知道怎么调 API。
 > Skill 的价值 = f(知识差距 × Agent 遭遇频率 × 错误结构性)
+
+Agent 表现不佳的根因不只是训练数据滞后，还包括：旧版模式在训练数据中占比过高（信噪比失衡）、隐性知识从未被文档化、以及跨系统组合的复杂性。Skill 要解决的是所有这些问题，而非仅做"版本补丁"。
 
 ### 适用 repo 类型
 
@@ -50,19 +52,31 @@ Agent 的能力上限 = 模型智能 × 可用上下文。
 skill-anything/
 ├── SKILL.md              # 主入口：Orchestrator 工作流指南
 ├── agents/               # 子代理角色指南
-│   ├── researcher.md     # Researcher — 研究 repo、产出 Knowledge Map
+│   ├── researcher.md     # Researcher — 深度研究 repo、产出 Knowledge Map
 │   ├── skill-writer.md   # Skill Writer — 生成/改进 Skill 文件
 │   ├── eval-designer.md  # Eval Designer — 设计评估任务（与 Skill 隔离）
 │   └── judge.md          # Judge — 盲法评判、多通道评分
 ├── scripts/              # 辅助脚本（机械操作）
+│   ├── repo_manifest.py  # 扫描 repo 结构事实
+│   ├── extract_api_surface.py  # 批量提取文件签名 + docstring
+│   ├── find_related_issues.py  # 获取 GitHub issues 摘要
+│   ├── blind_eval.py     # 盲化 eval 结果
+│   ├── deblind_and_score.py  # 反盲化 + 评分 + 收敛
 │   ├── convergence.py    # ε-δ 收敛判定 + results.tsv
 │   ├── validate_skill.py # Skill 格式校验
-│   └── gen_viewer.py     # 生成 eval viewer HTML
-├── assets/
-│   └── viewer-template.html  # Eval Viewer HTML 模板
-└── references/           # 设计文档（非 Agent 运行时使用）
-    ├── design-evolution.md
-    └── ...
+│   ├── gen_viewer.py     # 生成 eval viewer HTML
+│   ├── summarize_knowledge.py  # 从 Knowledge Map 生成域摘要
+│   ├── register_skill.py     # 注册 Skill 到 registry
+│   └── generate_catalog.py   # 从 registry 生成 catalog
+├── references/           # SKILL.md 溢出内容 + 设计文档
+│   ├── eval-loop.md      # 迭代循环详情（按需加载）
+│   └── design-evolution.md
+├── registry.json         # 已发布 Skill 的结构化目录
+├── published/            # 已发布的 Skill 文件（由 register_skill.py 管理）
+├── catalog-skill/        # 元 Skill：指向在线 catalog 的发现入口
+│   └── SKILL.md
+└── assets/
+    └── viewer-template.html  # Eval Viewer HTML 模板
 ```
 
 ### 架构图
@@ -70,19 +84,19 @@ skill-anything/
 ```
 ┌────────────────────────────────────────────────────────────┐
 │  Claude（Orchestrator）                                     │
-│  读取 SKILL.md 工作流指引                                    │
-│  自主判断阶段、调度子代理、做全局决策                          │
-│  上下文：workspace 文件 + Judge 反馈 + 收敛历史               │
+│  读取 SKILL.md → 按需加载 references/eval-loop.md            │
+│  薄 Orchestrator：只调度和决策，机械操作交给脚本              │
+│  状态：orchestrator-state.json（可中断恢复）                  │
 └───────────────────────────┬────────────────────────────────┘
                             │  通过 Task tool spawn 子代理
-            ┌───────────────┼───────────────┐
-            ▼               ▼               ▼
-     ┌────────────┐  ┌────────────┐  ┌────────────────┐
-     │ Researcher │  │Skill Writer│  │ Eval Designer  │
-     │ 入：repo   │  │ 入：KM +   │  │ 入：KM（无     │
-     │ 出：KM     │  │  feedback  │  │  Skills！）    │
-     │            │  │ 出：skills/│  │ 出：eval-tasks │
-     └────────────┘  └────────────┘  └────────────────┘
+         ┌──────────────────┼───────────────┐
+         ▼                  ▼               ▼
+  ┌──────────────┐   ┌────────────┐  ┌────────────────┐
+  │ Researcher   │   │Skill Writer│  │ Eval Designer  │
+  │ 入：profile  │   │ 入：KM +   │  │ 入：KM（无     │
+  │  + repo      │   │  feedback  │  │  Skills！）    │
+  │ 出：KM       │   │ 出：skills/│  │ 出：eval-tasks │
+  └──────────────┘   └────────────┘  └────────────────┘
                                             │
                           ┌─────────────────┼─────────────────┐
                           ▼                 ▼                 ▼
@@ -106,9 +120,10 @@ skill-anything/
 
 ### 设计原则
 
-#### 原则一：上下文隔离
+#### 原则一：上下文隔离与公平基线
 
-- Skill Writer 和 Task Runner **必须隔离**——Runner 只能通过 Skill 文件获取知识
+- Runner+S 和 Runner-S **都有 repo/ 副本**——Eval 测量"蒸馏态 vs 原始态"，不是"有文档 vs 无文档"
+- Runner+S 额外拥有 skills/，但不禁止查看 repo——Skill 的价值应体现为更高效的决策路径
 - Eval Designer 和 Skills **必须隔离**——Eval Designer 在隔离临时目录工作，物理上看不到 skills/
 - Judge 和 Runner 身份 **必须隔离**——Judge 收到盲化的 A/B 标签，不知道哪个用了 Skill
 
@@ -128,8 +143,10 @@ skill-anything/
 
 ### Researcher（研究员）
 
-- 输入：repo URL
-- 输出：语义域结构化的 Knowledge Map（YAML）
+- 输入：`repo-profile.yaml`（结构化事实，由 `repo_manifest.py` 生成）+ repo 源码
+- 输出：语义域结构化的 Knowledge Map（YAML），知识点带蒸馏类型标注（cognitive/gotcha/pattern/api）
+- 全权自治：自主决定域划分、研究策略、精读哪些文件。问题驱动，不是文件驱动
+- 辅助脚本：`extract_api_surface.py`（批量签名提取）、`find_related_issues.py`（issues 摘要，可选）
 - 详细指南：[agents/researcher.md](agents/researcher.md)
 
 ### Skill Writer（技能作者）
@@ -142,14 +159,14 @@ skill-anything/
 ### Eval Designer（评估设计师）
 
 - 输入：**仅 Knowledge Map**（在隔离目录中工作，物理上不包含 skills/）
-- 输出：评估任务集（每个 Skill 对应 2-3 个有区分度的任务）
+- 输出：评估任务集，包含三种类型：coding（含调试/陷阱检测）、reasoning、transfer（reasoning + transfer ≥ 40%）
 - 详细指南：[agents/eval-designer.md](agents/eval-designer.md)
 
 ### Task Runner（任务执行器）
 
-- `Runner+S`：加载 Skill 执行任务
-- `Runner-S`：不加载 Skill 执行任务（基线）
-- 每个 Runner 在独立的临时目录中运行
+- `Runner+S`：repo/ 副本 + Skill 执行任务
+- `Runner-S`：仅 repo/ 副本执行任务（基线）
+- 每个 Runner 在独立的临时目录中运行，都能访问原始 repo
 
 ### Judge（评判官）
 
@@ -204,10 +221,20 @@ domains:
 
 ### 综合评分公式
 
+对 coding 类型 task：
+
 ```
-composite = executionPass×0.2 + assertionCoverage×0.25 + (llmJudgeScore/5)×0.35 + trajectory×0.2
+composite = executionPass×0.1 + assertionCoverage×0.15 + (llmJudgeScore/5)×0.40 + trajectory×0.35
 trajectory = max(0, 1 - toolCallsWith/toolCallsWithout)
 ```
+
+对 reasoning / transfer 类型 task（无代码执行，纯推理/迁移产出）：
+
+```
+composite = (llmJudgeScore/5)×0.55 + trajectory×0.45
+```
+
+设计理由：两个 Runner 都有 repo 访问权，trajectory 差异真正反映蒸馏效率。llmJudgeScore 权重提升以覆盖语义质量、推理深度和知识内化程度。
 
 ### 收敛判定
 
@@ -264,6 +291,8 @@ skill-name/
 | SKILL.md 正文 | < 500 行 |
 | 文件引用 | 最多一层深度 |
 
+**多 Skill 索引**：当产出 ≥ 2 个 Skill 时，必须在 `skills/index/SKILL.md` 生成索引入口（< 50 行），列出所有子 Skill 的名称、适用场景和路径。最终用户的 Agent 首先读取索引，按需加载具体 Skill。
+
 ### 自定义扩展
 
 仅在 `metadata` 中用 `sa-` 前缀添加扩展键（非侵入式，标准兼容）：
@@ -282,9 +311,17 @@ metadata:
 ```
 workspace/
 ├── .git/                         # git 版本控制
+├── orchestrator-state.json       # Orchestrator 状态机（可恢复）
 ├── knowledge/
-│   └── knowledge-map.yaml        # Researcher 产出
+│   ├── repo-profile.yaml          # repo_manifest.py 产出（纯事实）
+│   ├── api-surface.yaml          # extract_api_surface.py 产出（Researcher 按需调用）
+│   ├── issues-summary.yaml       # find_related_issues.py 产出（Researcher 按需调用）
+│   ├── knowledge-map.yaml        # Researcher 产出（合并后）
+│   ├── domain-summary.yaml       # summarize_knowledge.py 产出
+│   └── domains/                  # 域定向深研产出（大 repo 时）
 ├── skills/
+│   ├── index/                    # 多 Skill 时的索引（可选）
+│   │   └── SKILL.md
 │   └── skill-name/
 │       └── SKILL.md              # Skill Writer 产出
 ├── evals/
@@ -292,7 +329,11 @@ workspace/
 │   └── results/
 │       └── iter-N/
 │           ├── eval-results.json
-│           ├── judge-scores.json
+│           ├── blinded-eval-results.json  # blind_eval.py 产出
+│           ├── blind-mapping.json         # blind_eval.py 产出（勿读）
+│           ├── blind-judge-scores.json    # Judge 产出
+│           ├── judge-scores.json          # deblind_and_score.py 产出
+│           ├── iteration-summary.json     # deblind_and_score.py 产出（Orchestrator 读此文件）
 │           └── viewer.html
 └── results.tsv                   # 实验日志
 ```
@@ -301,13 +342,21 @@ workspace/
 
 ## 七、辅助脚本
 
-所有脚本用 Python 编写，仅依赖标准库。
+所有脚本用 Python 编写，仅依赖标准库（`find_related_issues.py` 需要 `gh` CLI）。
 
 | 脚本 | 用途 | 调用方式 |
 |---|---|---|
+| `scripts/repo_manifest.py` | 扫描 repo 结构事实（纯事实，无语义判断） | `python scripts/repo_manifest.py <workspace> [--repo <path>]` |
+| `scripts/extract_api_surface.py` | 批量提取文件签名 + docstring | `python scripts/extract_api_surface.py <files...> [--output <path>]` |
+| `scripts/find_related_issues.py` | 获取 GitHub issues 摘要（可选） | `python scripts/find_related_issues.py <repo-path> [--keywords kw1,kw2] [--output <path>]` |
+| `scripts/blind_eval.py` | 盲化 eval 结果（随机 A/B） | `python scripts/blind_eval.py <workspace> <iteration>` |
+| `scripts/deblind_and_score.py` | 反盲化 + 评分 + 收敛检查 | `python scripts/deblind_and_score.py <workspace> <iteration> [--cost <usd>]` |
 | `scripts/convergence.py` | ε-δ 收敛判定 + results.tsv 追加 | `python scripts/convergence.py <workspace> <score> [--cost <usd>] [--status keep\|discard] [--desc "text"]` |
 | `scripts/validate_skill.py` | 验证 Skill 目录格式合规性 | `python scripts/validate_skill.py <skill-dir>` |
 | `scripts/gen_viewer.py` | 从 workspace 数据生成 eval viewer HTML | `python scripts/gen_viewer.py <workspace> [iteration]` |
+| `scripts/summarize_knowledge.py` | 从 Knowledge Map 生成域摘要 | `python scripts/summarize_knowledge.py <workspace>` |
+| `scripts/register_skill.py` | 注册 Skill 到 registry | `python scripts/register_skill.py <workspace> <repo-url> [--name name]` |
+| `scripts/generate_catalog.py` | 从 registry 生成 catalog | `python scripts/generate_catalog.py` |
 
 版本控制用 workspace 内的 git：
 
@@ -321,7 +370,46 @@ cd workspace && git checkout skill-v<N-1> -- skills/
 
 ---
 
-## 八、MVP 选型与实施路线图
+## 八、Skill Catalog（外部化发布）
+
+蒸馏完成后，可将 Skill 发布到 catalog 供跨会话复用。
+
+### 架构
+
+```
+registry.json          ← 结构化数据源（single source of truth）
+       │
+       ▼
+generate_catalog.py    → catalog-skill/SKILL.md  (repo 内)
+                       → docs/catalog/SKILL.txt  (GitHub Pages)
+       ▲
+       │
+register_skill.py      ← 从 workspace 注册新 Skill
+```
+
+### 三级发现机制
+
+| 层级 | 文件 | 大小 | 作用 |
+|------|------|------|------|
+| L0 指针 | `catalog-skill/SKILL.md` | ~40 行 | 只含 URL，指向在线目录 |
+| L1 目录 | GitHub Pages SKILL.txt | ~100 行 | 所有已发布 Skill 的分类表 |
+| L2 详情 | `published/<name>/SKILL.md` | 各异 | 具体 Skill 的完整内容 |
+
+Agent 按需逐级深入：L0（40 行）→ L1（100 行）→ 仅加载目标 Skill。
+
+### 发布流程
+
+```bash
+python scripts/register_skill.py workspace/ https://github.com/org/repo
+python scripts/generate_catalog.py
+git add published/ registry.json catalog-skill/ docs/
+git commit -m "publish: repo-name skills"
+git push  # GitHub Pages 自动部署
+```
+
+---
+
+## 九、MVP 选型与实施路线图
 
 ### Phase 0 冒烟 repo A：Tailwind CSS v4
 
@@ -350,7 +438,7 @@ cd workspace && git checkout skill-v<N-1> -- skills/
 
 ---
 
-## 九、关键决策汇总
+## 十、关键决策汇总
 
 | 决策项 | 结论 | 核心理由 |
 |---|---|---|

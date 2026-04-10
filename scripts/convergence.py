@@ -74,9 +74,9 @@ def main():
     )
     above_minimum = score >= MIN_SCORE
     budget_exhausted = total_cost >= MAX_BUDGET_USD
-    max_iters_reached = iteration >= MAX_ITERATIONS
+    max_iters_reached = iteration > MAX_ITERATIONS
 
-    converged = (above_minimum and (all_small or decelerating)) or budget_exhausted or max_iters_reached
+    converged = above_minimum and ((all_small or decelerating) or budget_exhausted or max_iters_reached)
 
     # Determine status for results.tsv
     auto_status = "discard" if delta is not None and delta < -0.05 else "keep"

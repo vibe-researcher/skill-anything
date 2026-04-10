@@ -22,11 +22,11 @@
 
 ### 1. 执行通过率 (`executionPass`)
 
-代码能不能跑？**布尔值**。
+代码能不能跑？**布尔值**。仅适用于 `coding` 类型 task。对 `reasoning` / `transfer` 类型 task，设为 `null`。
 
 ### 2. 断言覆盖率 (`assertionCoverage`)
 
-任务的 `expectedBehavior` 中有多少条被该输出满足？**[0.0, 1.0]**。
+任务的 `expectedBehavior` 中有多少条被该输出满足？**[0.0, 1.0]**。仅适用于 `coding` 类型 task。对 `reasoning` / `transfer` 类型 task，设为 `null`。
 
 ### 3. 语义质量评分 (`llmJudgeScore`)
 
@@ -40,9 +40,28 @@
 | 4.0 | 质量好，有小瑕疵 |
 | 5.0 | 优秀 |
 
+对不同 task 类型，语义质量的侧重不同：
+- **coding**：代码正确性、完整性、最佳实践
+- **reasoning**：方案完整性、权衡深度、领域认知准确性
+- **transfer**：核心原理应用正确性、实现可用性、对底层机制的理解
+
 ### 4. 工具调用次数 (`toolUseCount`)
 
-更少的工具调用（在同等质量下）说明路径更高效。
+更少的工具调用（在同等质量下）说明路径更高效。两个 Runner 都有 repo 访问权——如果某个输出大量翻找 repo 文件，说明它缺乏内化知识。
+
+### 5. 新颖应用能力 (`novelApplicability`)（仅 reasoning / transfer task）
+
+**[1, 5]**——agent 是否展现了超越字面指令的领域理解？
+
+| 分数 | 含义 |
+|------|------|
+| 1 | 纯复述已知内容或套用通用模板 |
+| 2 | 有一定领域意识但缺乏深度 |
+| 3 | 正确应用了领域原则到具体场景 |
+| 4 | 展现了多维度权衡和领域洞察 |
+| 5 | 深层领域理解，做出了非显而易见的正确判断 |
+
+对 `coding` 类型 task，设为 `null`。
 
 ## 输出格式
 
@@ -52,16 +71,19 @@ JSON 数组，写入 `blind-judge-scores.json`：
 [
   {
     "taskId": "task-id",
+    "taskType": "coding",
     "outputA": {
       "executionPass": true,
       "assertionCoverage": 0.85,
       "llmJudgeScore": 4.2,
+      "novelApplicability": null,
       "toolUseCount": 12
     },
     "outputB": {
       "executionPass": true,
       "assertionCoverage": 0.60,
       "llmJudgeScore": 3.1,
+      "novelApplicability": null,
       "toolUseCount": 34
     },
     "winner": "A",
@@ -81,6 +103,34 @@ JSON 数组，写入 `blind-judge-scores.json`：
     }
   }
 ]
+```
+
+**reasoning / transfer task 示例**：
+
+```json
+{
+  "taskId": "task-reasoning-1",
+  "taskType": "reasoning",
+  "outputA": {
+    "executionPass": null,
+    "assertionCoverage": null,
+    "llmJudgeScore": 4.5,
+    "novelApplicability": 4,
+    "toolUseCount": 3
+  },
+  "outputB": {
+    "executionPass": null,
+    "assertionCoverage": null,
+    "llmJudgeScore": 3.0,
+    "novelApplicability": 2,
+    "toolUseCount": 15
+  },
+  "winner": "A",
+  "reasoning": "...",
+  "feedback": "...",
+  "suggestion": "...",
+  "evalFeedback": {}
+}
 ```
 
 ## 评判重点
@@ -114,7 +164,10 @@ JSON 数组，写入 `blind-judge-scores.json`：
 ## 自洽性检验
 
 ```
-✓ 完整性：所有评分维度（A/B 各四个）都有值
+✓ 完整性：所有评分维度都有值（coding: 4 维度；reasoning/transfer: llmJudgeScore + novelApplicability + toolUseCount）
+✓ taskType 字段与 eval-tasks.json 中的 type 一致（coding / reasoning / transfer）
+✓ reasoning/transfer task 的 executionPass 和 assertionCoverage 为 null
+✓ coding task 的 novelApplicability 为 null
 ✓ winner 一致性：winner 与 A/B 的评分方向一致
 ✓ 实质性：feedback ≥ 50 字符
 ✓ 可操作性：suggestion 包含具体修改方向
