@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""De-blind judge scores, compute composite, check convergence.
+"""De-blind grader scores, compute composite, check convergence.
 
-Reads blind-judge-scores.json + blind-mapping.json + eval-results.json.
-Writes judge-scores.json + iteration-summary.json.
+Reads blind-grader-scores.json + blind-mapping.json + eval-results.json.
+Writes grader-scores.json + iteration-summary.json.
 Calls convergence.py internally.
 
 Usage:
     python scripts/deblind_and_score.py <workspace> <iteration> [--cost <usd>]
 
-stdout prints a compact 3-line summary for the Orchestrator.
+stdout prints a compact summary for the Orchestrator.
 """
 
 import json
@@ -23,25 +23,9 @@ def compute_trajectory(tool_calls_with, tool_calls_without):
     return max(0, 1 - tool_calls_with / tool_calls_without)
 
 
-def compute_composite(execution_pass, assertion_coverage, llm_judge_score,
-                      tool_calls_with, tool_calls_without, task_type=None):
+def compute_composite(quality, tool_calls_with, tool_calls_without):
     trajectory = compute_trajectory(tool_calls_with, tool_calls_without)
-
-    if task_type in ("reasoning", "transfer"):
-        return round(
-            (llm_judge_score / 5) * 0.55
-            + trajectory * 0.45,
-            4
-        )
-
-    exec_val = 1.0 if execution_pass else 0.0
-    return round(
-        exec_val * 0.1
-        + assertion_coverage * 0.15
-        + (llm_judge_score / 5) * 0.40
-        + trajectory * 0.35,
-        4
-    )
+    return round((quality / 5) * 0.6 + trajectory * 0.4, 4)
 
 
 def main():
@@ -58,15 +42,13 @@ def main():
 
     results_dir = workspace / "evals" / "results" / f"iter-{iteration}"
 
-    blind_scores = json.loads((results_dir / "blind-judge-scores.json").read_text())
+    blind_scores_path = results_dir / "blind-grader-scores.json"
+    if not blind_scores_path.exists():
+        blind_scores_path = results_dir / "blind-judge-scores.json"
+
+    blind_scores = json.loads(blind_scores_path.read_text())
     mapping = json.loads((results_dir / "blind-mapping.json").read_text())
     eval_results = json.loads((results_dir / "eval-results.json").read_text())
-
-    eval_tasks_path = workspace / "evals" / "eval-tasks.json"
-    task_types = {}
-    if eval_tasks_path.exists():
-        for t in json.loads(eval_tasks_path.read_text()):
-            task_types[t["id"]] = t.get("type", "coding")
 
     mapping_by_task = {m["taskId"]: m["aIsWithSkill"] for m in mapping}
     eval_by_task = {t["taskId"]: t for t in eval_results["tasks"]}
@@ -74,7 +56,7 @@ def main():
     scores_list = blind_scores if isinstance(blind_scores, list) \
         else blind_scores.get("tasks", blind_scores.get("scores", []))
 
-    judge_scores = []
+    grader_scores = []
     composites = []
 
     for score in scores_list:
@@ -97,44 +79,19 @@ def main():
         tc_with = eval_task["withSkill"].get("toolUseCount", 0)
         tc_without = eval_task["withoutSkill"].get("toolUseCount", 0)
 
-        tt = task_types.get(task_id, score.get("taskType", "coding"))
+        quality = skill_output.get("quality",
+                                   skill_output.get("llmJudgeScore", 3.0))
 
-        if tt in ("reasoning", "transfer"):
-            ep = None
-            ac = None
-        else:
-            if "executionPass" not in skill_output:
-                print(f"WARNING: {task_id} missing executionPass, defaulting to False",
-                      file=sys.stderr)
-            if "llmJudgeScore" not in skill_output:
-                print(f"WARNING: {task_id} missing llmJudgeScore, defaulting to 3.0",
-                      file=sys.stderr)
-            ep = skill_output.get("executionPass", False)
-            ac = skill_output.get("assertionCoverage", 0.0)
-
-        ljs = skill_output.get("llmJudgeScore", 3.0)
-        na = skill_output.get("novelApplicability", None)
-
-        comp = compute_composite(
-            ep if ep is not None else False,
-            ac if ac is not None else 0.0,
-            ljs, tc_with, tc_without, task_type=tt
-        )
+        comp = compute_composite(quality, tc_with, tc_without)
         composites.append(comp)
 
-        judge_scores.append({
+        grader_scores.append({
             "taskId": task_id,
-            "taskType": tt,
             "composite": comp,
-            "channels": {
-                "executionPass": ep,
-                "assertionCoverage": ac,
-                "llmJudgeScore": ljs,
-                "novelApplicability": na,
-                "trajectoryEfficiency": {
-                    "toolCallsWith": tc_with,
-                    "toolCallsWithout": tc_without,
-                },
+            "quality": quality,
+            "trajectoryEfficiency": {
+                "toolCallsWith": tc_with,
+                "toolCallsWithout": tc_without,
             },
             "blindComparison": {
                 "winner": winner,
@@ -144,37 +101,28 @@ def main():
             },
             "feedback": score.get("feedback", ""),
             "suggestion": score.get("suggestion", ""),
-            "evalFeedback": score.get("evalFeedback", {}),
         })
 
-    (results_dir / "judge-scores.json").write_text(
-        json.dumps(judge_scores, indent=2, ensure_ascii=False))
+    (results_dir / "grader-scores.json").write_text(
+        json.dumps(grader_scores, indent=2, ensure_ascii=False))
 
     avg_composite = round(sum(composites) / len(composites), 4) \
         if composites else 0
-
-    # --- Knowledge density (exclude index SKILL.md) ---
-    skill_line_count = 0
-    skills_dir = workspace / "skills"
-    if skills_dir.exists():
-        for md_file in skills_dir.rglob("SKILL.md"):
-            if md_file.parent.name == "index":
-                continue
-            skill_line_count += len(md_file.read_text().splitlines())
-    knowledge_density = round(avg_composite / skill_line_count * 100, 4) \
-        if skill_line_count > 0 else None
 
     # --- Regression detection ---
     regressions = []
     prev_scores_map = {}
     if iteration > 1:
         prev_path = workspace / "evals" / "results" / \
-            f"iter-{iteration - 1}" / "judge-scores.json"
+            f"iter-{iteration - 1}" / "grader-scores.json"
+        if not prev_path.exists():
+            prev_path = workspace / "evals" / "results" / \
+                f"iter-{iteration - 1}" / "judge-scores.json"
         if prev_path.exists():
             prev_data = json.loads(prev_path.read_text())
             prev_scores_map = {s["taskId"]: s.get("composite", 0)
                                for s in prev_data}
-            for s in judge_scores:
+            for s in grader_scores:
                 tid = s["taskId"]
                 if tid in prev_scores_map:
                     delta = s["composite"] - prev_scores_map[tid]
@@ -184,7 +132,7 @@ def main():
 
     # --- Build compact summary ---
     per_task = []
-    for s in judge_scores:
+    for s in grader_scores:
         tid = s["taskId"]
         prev = prev_scores_map.get(tid)
         per_task.append({
@@ -221,8 +169,6 @@ def main():
     summary = {
         "iteration": iteration,
         "composite_score": avg_composite,
-        "knowledge_density": knowledge_density,
-        "skill_line_count": skill_line_count,
         "converged": converged,
         "convergence_reason": reason,
         "regressions": regressions,
@@ -233,7 +179,7 @@ def main():
     (results_dir / "iteration-summary.json").write_text(
         json.dumps(summary, indent=2, ensure_ascii=False))
 
-    # --- Compact stdout for Orchestrator (< 200 chars) ---
+    # --- Compact stdout for Orchestrator ---
     print(f"composite={avg_composite} converged={converged} reason={reason}")
     if regressions:
         reg_ids = ", ".join(r["taskId"] for r in regressions)

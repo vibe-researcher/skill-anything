@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Blind eval results for judge review.
+"""Blind eval results for grader review.
 
 Reads eval-results.json, randomly assigns A/B labels,
 writes blinded-eval-results.json and blind-mapping.json.

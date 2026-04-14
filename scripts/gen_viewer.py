@@ -4,7 +4,7 @@
 Usage:
     python scripts/gen_viewer.py <workspace> [iteration]
 
-Reads eval-tasks.json, eval-results.json, judge-scores.json from the
+Reads eval-tasks.json, eval-results.json, grader-scores.json from the
 workspace and populates the viewer template. Opens the result in browser.
 """
 
@@ -29,22 +29,21 @@ def load_json(path: Path):
 def gather_history(ws: Path, up_to_iter: int) -> list:
     history = []
     for i in range(1, up_to_iter + 1):
-        scores_path = ws / "evals" / "results" / f"iter-{i}" / "judge-scores.json"
+        scores_path = ws / "evals" / "results" / f"iter-{i}" / "grader-scores.json"
+        if not scores_path.exists():
+            scores_path = ws / "evals" / "results" / f"iter-{i}" / "judge-scores.json"
         try:
             scores = json.loads(scores_path.read_text())
             composites = []
             for s in scores:
-                c = s.get("channels", {})
-                traj = c.get("trajectoryEfficiency", {})
-                tc_with = traj.get("toolCallsWith", 0)
-                tc_without = traj.get("toolCallsWithout", 1)
-                traj_score = max(0, 1 - tc_with / tc_without) if tc_without > 0 else 0
-                comp = (
-                    (0.2 if c.get("executionPass") else 0)
-                    + c.get("assertionCoverage", 0) * 0.25
-                    + (c.get("llmJudgeScore", 0) / 5) * 0.35
-                    + traj_score * 0.2
-                )
+                comp = s.get("composite", 0)
+                if comp == 0:
+                    quality = s.get("quality", s.get("channels", {}).get("llmJudgeScore", 3.0))
+                    traj_info = s.get("trajectoryEfficiency", s.get("channels", {}).get("trajectoryEfficiency", {}))
+                    tc_with = traj_info.get("toolCallsWith", 0)
+                    tc_without = traj_info.get("toolCallsWithout", 1)
+                    traj_score = max(0, 1 - tc_with / tc_without) if tc_without > 0 else 0
+                    comp = (quality / 5) * 0.6 + traj_score * 0.4
                 composites.append(comp)
             avg = sum(composites) / len(composites) if composites else 0
             history.append({"iteration": i, "score": avg})
@@ -74,7 +73,8 @@ def main():
 
     eval_tasks = load_json(ws / "evals" / "eval-tasks.json") or []
     eval_results = load_json(iter_dir / "eval-results.json")
-    judge_scores = load_json(iter_dir / "judge-scores.json") or []
+    grader_scores = load_json(iter_dir / "grader-scores.json") \
+        or load_json(iter_dir / "judge-scores.json") or []
     blind_mapping = load_json(iter_dir / "blind-mapping.json") or {}
 
     # Read results.tsv for cost
@@ -96,7 +96,7 @@ def main():
         "convergence": {"scores": scores_list, "converged": False},
         "evalTasks": eval_tasks,
         "evalResults": eval_results.get("tasks", []) if eval_results else [],
-        "judgeScores": judge_scores,
+        "judgeScores": grader_scores,
         "blindMapping": blind_mapping,
         "history": history,
     }
