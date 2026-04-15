@@ -1,0 +1,206 @@
+[
+  {
+    "taskId": "grader-type-selection-mcq",
+    "composite": 0.8067,
+    "quality": 4.5,
+    "trajectoryEfficiency": {
+      "toolCallsWith": 1,
+      "toolCallsWithout": 3
+    },
+    "blindComparison": {
+      "winner": "B",
+      "skillWasOutput": "B",
+      "skillWon": "yes",
+      "reasoning": "Output B 明确指出 RubricGrader 即 LLMGrader+rubrics 模式，解释了为什么需要预定义评分标准（一致性、可审计性），并逐一排除其他选项的理由。Output A 虽然也选了 LLMGrader，但声称 RubricGrader 等不存在为独立类，这一点表述不够清晰——实际上 RubricGrader 模式就是带 rubrics 的 LLMGrader，Output B 对此解释更准确。Output A 的否定说法（\"在 openjudge 核心包中没有对应的独立实现\"）虽然技术上可能正确，但容易误导读者认为 rubric 功能不存在，而非只是用法上的区别。"
+    },
+    "feedback": "Output A 对 RubricGrader 关系的阐述容易造成误解，暗示该模式不可用而非只是作为 LLMGrader 的参数模式存在。Output B 清晰地建立了 LLMGrader+rubrics=RubricGrader 的概念映射。",
+    "suggestion": "补充说明 rubrics 参数的具体使用示例，增强可操作性；同时在排除选项时应说明 ExactMatch 不适用的具体理由（确定性规则无法捕捉语义细节）。"
+  },
+  {
+    "taskId": "runner-grader-configs-format",
+    "composite": 0.8067,
+    "quality": 4.5,
+    "trajectoryEfficiency": {
+      "toolCallsWith": 1,
+      "toolCallsWithout": 3
+    },
+    "blindComparison": {
+      "winner": "B",
+      "skillWasOutput": "B",
+      "skillWon": "yes",
+      "reasoning": "两个输出都准确识别了 list 传入导致 AttributeError 的根本原因，并引用了 grading_runner.py 第181行。但 Output B 额外提到了 mapper 字段（grader参数名→数据集字段名）这一重要细节，以及 results['relevance'] 的后续访问方式，这些是修复后实际使用时必须了解的关键信息。Output A 提到 GraderConfig.create() 支持四种格式是有价值的技术细节，但 Output B 对整个使用链路的覆盖更完整，对用户的实际帮助更大。"
+    },
+    "feedback": "Output A 提到 GraderConfig.create() 支持的四种格式类型是有价值的补充，但没有说明后续如何通过 key 访问结果。Output B 将 mapper 字段和结果访问方式联系在一起，形成了更完整的使用指南。",
+    "suggestion": "增加一个最小可运行的代码示例，展示正确的 dict 格式以及如何用 key 访问评估结果，降低用户的使用门槛。"
+  },
+  {
+    "taskId": "weighted-aggregator-silent-bug",
+    "composite": 0.8427,
+    "quality": 4.8,
+    "trajectoryEfficiency": {
+      "toolCallsWith": 1,
+      "toolCallsWithout": 3
+    },
+    "blindComparison": {
+      "winner": "B",
+      "skillWasOutput": "B",
+      "skillWon": "yes",
+      "reasoning": "Output B 的分析更为精准和深入。它不仅指出了 0.0 权重的问题，还精确计算了实际有效权重比例（relevance 42.9%，hallucination 57.1%），让问题的严重性一目了然。更关键的是，Output B 额外分析了 GraderError 场景下聚合器重新归一化权重导致 composite 静默失真的二阶问题，这是一个重要的运行时风险点。Output A 虽然也提出了断言防御，但对实际影响的量化分析不如 B。Output B 的 assert set(weights) == set(grader_names) 防御方案也更具体可执行。"
+    },
+    "feedback": "Output A 的修复建议稍显宽泛（'补全权重或加断言'），而 Output B 给出了精确的断言代码。Output A 没有提到 GraderError 场景下的二阶失真问题，而这在生产环境中同样危险。",
+    "suggestion": "进一步补充断言的最佳放置位置（如 WeightedSumAggregator.__init__ 中），以及如何在已有代码中最小改动地添加这一防御。"
+  },
+  {
+    "taskId": "grader-rank-validation-error",
+    "composite": 0.94,
+    "quality": 4.5,
+    "trajectoryEfficiency": {
+      "toolCallsWith": 0,
+      "toolCallsWithout": 3
+    },
+    "blindComparison": {
+      "winner": "A",
+      "skillWasOutput": "A",
+      "skillWon": "yes",
+      "reasoning": "Output A 和 B 都准确描述了 rank=0 触发 ValidationError 进而包装为 GraderError 的流程，以及 composite 静默失真的风险。Output A 的优势在于更简洁地覆盖了核心信息：预测错误链、解释聚合失真影响、提供修复方案三步完整。Output B 引用了具体的源码位置（schema.py）和错误信息文本，技术细节更丰富，但将数据过滤、prompt 修改、后处理告警三种修复并列而未指明优先级。Output A 虽然没有引用源码，但逻辑推理链条清晰，0 工具调用却得出了准确结论，质量更高。"
+    },
+    "feedback": "Output B 引用了 schema.py 的具体错误信息（'All ranks should be positive integers'），增加了可信度，但三个修复建议缺乏优先级排序。Output A 的聚合失真分析更为聚焦。",
+    "suggestion": "明确说明三种修复方案的优先级（数据预处理 > 后处理告警 > prompt 约束），并说明为什么数据入口过滤是最根本的防御。"
+  },
+  {
+    "taskId": "evaluation-strategy-selection",
+    "composite": 0.74,
+    "quality": 4.5,
+    "trajectoryEfficiency": {
+      "toolCallsWith": 1,
+      "toolCallsWithout": 2
+    },
+    "blindComparison": {
+      "winner": "B",
+      "skillWasOutput": "B",
+      "skillWon": "yes",
+      "reasoning": "两个输出都正确选择了 B（二阶段评估策略）并给出了合理理由。但 Output B 明确给出了 30-60% 的过滤效果数据，这是一个具体可量化的效益说明，对决策者更有说服力。Output B 对 D 选项（Pairwise）的排除也更完整，指出了 N²/2 成本问题和适用场景（无参考答案对比）。Output A 对 StringMatchGrader 支持 exact_match 的说明稍显冗余，但对 C 选项的分析（漏判语义等价答案）是准确的，这一点两者相同。"
+    },
+    "feedback": "Output A 对 StringMatchGrader 的说明增加了一些有价值的技术细节，但整体结构不如 B 简洁。Output B 的 30-60% 过滤效果数据是关键依据，让策略选择更有说服力。",
+    "suggestion": "补充具体场景示例说明何时二阶段策略效果最好（如知识问答类任务），以及如何设置阈值决定何时触发 LLMGrader 二次判断。"
+  },
+  {
+    "taskId": "mixed-scale-aggregation-pitfall",
+    "composite": 0.716,
+    "quality": 4.3,
+    "trajectoryEfficiency": {
+      "toolCallsWith": 1,
+      "toolCallsWithout": 2
+    },
+    "blindComparison": {
+      "winner": "A",
+      "skillWasOutput": "A",
+      "skillWon": "yes",
+      "reasoning": "两个输出都正确识别了量纲不一致的根本问题，并给出了归一化方案 (score-1)/4。Output A 的优势在于提出了生产环境的最佳实践：用 FunctionGrader 包装归一化逻辑在 grader 层完成，而非在聚合层修补，这是一个架构层面的重要区别。Output B 给出了具体数值示例（A=3/B=0.9 平均=1.95），让问题更直观，但建议使用 weights 参数近似补偿并标注了\"治标不治本\"，说明意识到这不是理想方案。两者质量接近，Output A 的架构建议略胜一筹。"
+    },
+    "feedback": "Output B 的具体数值示例（A=3/B=0.9）非常有助于理解问题，这是 A 缺乏的。Output A 提出 FunctionGrader 包装方案更具生产价值。",
+    "suggestion": "补充 FunctionGrader 包装归一化的代码骨架示例，展示如何在 grader 层统一量纲，而非仅描述概念。"
+  },
+  {
+    "taskId": "rubric-generator-strategy-choice",
+    "composite": 0.7827,
+    "quality": 4.3,
+    "trajectoryEfficiency": {
+      "toolCallsWith": 1,
+      "toolCallsWithout": 3
+    },
+    "blindComparison": {
+      "winner": "B",
+      "skillWasOutput": "A",
+      "skillWon": "no",
+      "reasoning": "两个输出都正确选择了 B（IterativeRubricsGenerator）并都提到了 label_score 字段陷阱。Output B 提供了更深入的技术背景：解释了 Propose-Evaluate-Revise 迭代机制和 MCR²（信息理论去冗余）算法，这些是理解为什么选择该 generator 的重要依据。Output B 对各个选项的排除理由也更精准：A 的排除是\"浪费已有标注数据\"（逻辑清晰），D 的排除是\"50条超 context 且无结构化 rubric 泛化性差\"（比 A 的说法更具体）。Output A 提到 ALL_SAMPLES 全量模式是有价值的细节，但整体深度不如 B。"
+    },
+    "feedback": "Output A 提到的 ≤100条走 ALL_SAMPLES 模式是实际使用时的重要参数知识，这一点 B 没有提及。Output B 的算法解释（MCR²、Propose-Evaluate-Revise）增加了选择依据的可信度。",
+    "suggestion": "补充 IterativeRubricsGenerator 的输入数据格式要求（query/response/label_score 三字段），以及当 label_score 字段缺失时如何排查静默失败问题。"
+  },
+  {
+    "taskId": "agentic-grader-tool-format-bug",
+    "composite": 0.964,
+    "quality": 4.7,
+    "trajectoryEfficiency": {
+      "toolCallsWith": 0,
+      "toolCallsWithout": 2
+    },
+    "blindComparison": {
+      "winner": "B",
+      "skillWasOutput": "B",
+      "skillWon": "yes",
+      "reasoning": "Output B 精准定位了根本原因：工具返回 str(result) 产生 Python repr 格式（单引号），这与合法 JSON 不同，导致调用侧 json.loads() 也无法修复，因此根本修复必须在工具侧。这一分析链条完整且正确。Output A 的分析路径存在混淆：它描述了 agents.py 第329-344行的代码逻辑，但建议的修复方向（调用侧 isinstance 判断后 json.loads）在 Python repr 格式下是无效的，Output B 已明确指出这一点。Output A 的诊断不够准确，指向了错误的修复位置。"
+    },
+    "feedback": "Output A 引用了具体源码行号但修复建议存在错误——json.loads() 无法解析 Python repr 格式的单引号字符串。Output B 用 0 工具调用得出了更准确的诊断，说明对底层机制理解更深入。",
+    "suggestion": "补充一个对比示例，展示 str({'score': 3}) 产生的 \"{'score': 3}\" 与 json.dumps({'score': 3}) 产生的 '{\"score\": 3}' 的区别，让读者直观理解为什么 json.loads 无法解析前者。"
+  },
+  {
+    "taskId": "agent-tool-cost-budget",
+    "composite": 0.84,
+    "quality": 4.5,
+    "trajectoryEfficiency": {
+      "toolCallsWith": 1,
+      "toolCallsWithout": 4
+    },
+    "blindComparison": {
+      "winner": "A",
+      "skillWasOutput": "A",
+      "skillWon": "yes",
+      "reasoning": "Output A 提出了四种互补机制，比 Output B 的三种更全面，且额外提出了 max_tool_calls 独立计数（基于现有 tool_calls_count 字段），这是一个具体可实现的增强方案。最关键的是，Output A 提出了根本性优化：当任务不需要外部信息访问时，换用 LLMGrader 可以降低 5-20 倍成本，这是一个架构层面的重要洞察。Output B 虽然使用了 4 个工具调用，但其建议（按任务分层调度注入不同模型）稍显模糊，没有给出具体实现路径。"
+    },
+    "feedback": "Output B 对 max_iterations_reached 元数据的说明（可识别截断样本）是实际监控中很有用的细节，Output A 缺乏这个。Output A 的 asyncio.Semaphore 并发控制是批量评估场景的关键，Output B 完全未提及。",
+    "suggestion": "补充 Semaphore 的具体使用示例（sem=asyncio.Semaphore(10)），以及如何通过 metadata 字段事后分析哪些任务真正需要 AgenticGrader 而非 LLMGrader。"
+  },
+  {
+    "taskId": "llm-grader-json-parse-failure",
+    "composite": 0.816,
+    "quality": 4.3,
+    "trajectoryEfficiency": {
+      "toolCallsWith": 1,
+      "toolCallsWithout": 4
+    },
+    "blindComparison": {
+      "winner": "B",
+      "skillWasOutput": "A",
+      "skillWon": "no",
+      "reasoning": "Output B 的核心优势是直接引用了框架实现细节（LLMGrader._aevaluate L421-L495），证明三层 fallback 已经内置，这对用户来说意味着他们不需要自己实现 fallback 链，而是要理解现有机制并正确配置。Output B 还给出了具体可用的 prompt 改进技巧（末尾附加 'JSON (and NOTHING else):'），并指出多个内置 grader 已有此模式作为佐证。Output A 的三级 fallback 描述是合理的架构建议，但如果框架已经实现了，这个建议就显得多余。知道框架现状是关键区别。"
+    },
+    "feedback": "Output A 的 structured output 首选建议是正确的，但 Output B 通过引用源码行号证明该机制已内置，让建议更有针对性。两者都提到了 GraderError 率监控，这是正确的生产最佳实践。",
+    "suggestion": "补充如何在框架内配置 structured_model 参数以启用 Pydantic 结构化输出，以及如何在评估后统计和可视化 GraderError 的分布模式。"
+  },
+  {
+    "taskId": "agent-grader-tool-call-grader-selection",
+    "composite": 0.852,
+    "quality": 4.6,
+    "trajectoryEfficiency": {
+      "toolCallsWith": 1,
+      "toolCallsWithout": 4
+    },
+    "blindComparison": {
+      "winner": "B",
+      "skillWasOutput": "B",
+      "skillWon": "yes",
+      "reasoning": "Output B 的核心优势是提供了具体的量纲归一化公式：trajectory_norm=(score-1)/2，tool_call_norm=(score-1)/4，将两种量程（1-3和1-5）统一到 0-1 范围，并给出了推荐权重（0.6/0.4）。这是直接可用的实现指导。Output A 同样识别了量纲差异并提出联合使用，但未给出归一化公式，只是提到\"注意量纲\"。Output B 还给出了单选时的主选建议（TrajectoryComprehensiveGrader），降低了决策复杂度。两者都正确识别了 TrajectoryGrader 量程为1-3这一关键陷阱。"
+    },
+    "feedback": "Output A 提到了 ToolCallStepSequenceMatchGrader 作为第三维度，这是有价值的扩展方案，Output B 未提及。Output B 对归一化公式的明确给出是关键的实用价值所在。",
+    "suggestion": "补充场景判断标准：何时用 ToolCallAccuracyGrader 为主（如 API 参数准确性是核心业务指标），何时用 TrajectoryComprehensiveGrader 为主（如多步推理质量是核心），帮助用户根据业务目标选择权重。"
+  },
+  {
+    "taskId": "grader-validation-methodology",
+    "composite": 0.952,
+    "quality": 4.6,
+    "trajectoryEfficiency": {
+      "toolCallsWith": 0,
+      "toolCallsWithout": 2
+    },
+    "blindComparison": {
+      "winner": "A",
+      "skillWasOutput": "A",
+      "skillWon": "yes",
+      "reasoning": "Output A 的关键优势在于明确了三步验证的顺序不可颠倒，并解释了为什么一致性是前提（不达标停止）。这一顺序逻辑是方法论的核心，Output B 未强调。Output A 对多场景的阈值覆盖也更全面：连续型用 Pearson≥0.75，二分类用 Cohen's Kappa(≥0.6)+accuracy(≥85%)，排名用 Kendall's Tau(≥0.7)，场景区分清晰。Output B 引入了 F1ScoreAnalyzer 和统计检验力（p<0.001 at n=100）等额外细节，但阈值体系稍显混乱（ConsistencyAnalyzer 通过线给出了两个不同值：0.75和0.85）。Output A 的 label_score 字段陷阱警告也非常关键。"
+    },
+    "feedback": "Output B 的统计检验力说明（Pearson r=0.75, n=100, p<0.001）是量化方法论严谨性的重要依据，Output A 缺乏这一点。Output B 的 ConsistencyAnalyzer 通过线前后不一致（0.75 vs 0.85）是一个质量问题。",
+    "suggestion": "补充各个 Analyzer 在框架中的具体使用代码（如 ConsistencyAnalyzer(grader=my_grader, n_runs=2).run(dataset)），并统一各场景的通过线标准，避免读者自行猜测合适阈值。"
+  }
+]

@@ -1,0 +1,137 @@
+{
+  "iteration": 5,
+  "tasks": [
+    {
+      "taskId": "grader-type-selection-mcq",
+      "outputA": {
+        "text": "A) LLMGrader。礼貌程度是主观语义判断，无法用精确匹配衡量，需要 LLM 理解语境、语气和表达方式；LLMGrader 支持自定义 rubric 模板。选项 B/C/D 在源码中均不存在为独立类（RubricGrader、PairwiseGrader、ExactMatchGrader 在 openjudge 核心包中没有对应的独立实现）。",
+        "toolUseCount": 3
+      },
+      "outputB": {
+        "text": "选 B) RubricGrader，即 LLMGrader+rubrics 参数模式。礼貌程度是语义维度，不能用确定性规则（排除 ExactMatch）；不需要对比两个候选（排除 Pairwise）。Skill 明确：【当需要可重复、可审计的评分时，应使用 rubrics 模式】——LLMGrader 配 rubrics 参数预定义分级描述（如 score=5 非常礼貌、score=3 基本礼貌、score=1 有冒犯），多次评估一致性远高于裸 LLM 判断。RubricGrader 在 OpenJudge 中不是独立类，而是 LLMGrader 传入 rubrics 列表的用法，框架入口始终是 LLMGrader。",
+        "toolUseCount": 1
+      }
+    },
+    {
+      "taskId": "runner-grader-configs-format",
+      "outputA": {
+        "text": "grader_configs 须为 dict（key=名称，value=GraderConfig 或 BaseGrader），传 list 导致 AttributeError: 'list' object has no attribute 'items'（grading_runner.py 第181行 grader_configs.items() 失败）。修复示例：configs = {'correctness': GraderConfig(grader=CorrectnessGrader(model=model), mapper={'reference_response': 'label_text'}), 'relevance': GraderConfig(grader=RelevanceGrader(model=model))}。dict 的 key 也是 results['correctness'] 取结果的索引——命名需与后续访问一致。GraderConfig.create() 支持 GraderConfig、BaseGrader、tuple、dict 四种格式，但外层容器必须是 dict。",
+        "toolUseCount": 1
+      },
+      "outputB": {
+        "text": "grader_configs 传入了 list，但 GradingRunner.__init__ 要求 Dict[str, GraderConfig | BaseGrader | Tuple]。源码关键行（grading_runner.py 第181行）：{name: GraderConfig.create(config) for name, config in grader_configs.items()}，list 没有 .items() 方法抛出 AttributeError。正确格式：dict，key 为 grader 名称。GraderConfig.create() 支持 GraderConfig、BaseGrader、tuple、dict 四种格式，但外层容器必须是 dict。",
+        "toolUseCount": 3
+      }
+    },
+    {
+      "taskId": "weighted-aggregator-silent-bug",
+      "outputA": {
+        "text": "weights.get('tool_selection', 0.0) 返回 0.0，tool_selection 分数乘 0 被完全忽略，不引发任何异常。最终 final_score = weighted_sum / total_weight，此处 total_weight = 0.3+0.4 = 0.7，等价于只对 relevance 和 hallucination 以 3:4 比例归一化，与预期三维评估不符但数值看起来合理极难察觉。修复：补全 tool_selection 权重，或在初始化时加断言校验权重完整性。",
+        "toolUseCount": 3
+      },
+      "outputB": {
+        "text": "WeightedSumAggregator 用 weights.get(grader_name, 0.0) 静默将缺失 key（tool_selection）权重置 0，分子不含其分数，分母为 0.7（非 1.0），等效重新缩放剩余权重（relevance 实际 42.9%，hallucination 57.1%）。批次中若某条出现 GraderError，聚合器对剩余有效 grader 重新归一化权重，composite 静默失真。防御方案（构造前断言）：grader_names = set(configs.keys()); weight_keys = set(weights.keys()); assert weight_keys == grader_names, f'权重 key 不一致：多余={weight_keys-grader_names}，缺失={grader_names-weight_keys}'。",
+        "toolUseCount": 1
+      }
+    },
+    {
+      "taskId": "grader-rank-validation-error",
+      "outputA": {
+        "text": "rank=0 触发 GraderRank 的 validate_rank 验证器（schema.py：'All ranks should be positive integers'），Pydantic 抛 ValidationError，被 GradingRunner 捕获包装为 GraderError——不崩溃但该记录无有效输出。GraderError 时 WeightedSumAggregator 动态重加权，批次内 GraderError 比例变化使 composite 静默失真。三种修复优先级：(1) 数据预处理过滤 rank<=0（最根本，从源头阻断）；(2) 后处理告警：统计 GraderError 数量，超阈值时停止使用该批次结果；(3) prompt 约束要求模型输出 rank 从 1 开始（治标）。",
+        "toolUseCount": 0
+      },
+      "outputB": {
+        "text": "GraderRank 继承 RankValidation，validate_rank 字段验证器（schema.py）：any(x <= 0 for x in rank) raise ValueError('All ranks should be positive integers')，触发 pydantic.ValidationError。在 GradingRunner._arun 被 except Exception 捕获包装成 GraderError，不崩溃但该记录无有效输出。正确处理：数据预处理过滤 rank<=0；在 prompt 中明确要求 rank 从 1 开始；后处理识别并告警 GraderError 记录。",
+        "toolUseCount": 3
+      }
+    },
+    {
+      "taskId": "evaluation-strategy-selection",
+      "outputA": {
+        "text": "选 B) ExactMatchGrader + LLMGrader 二阶段。Skill 明确：事实准确性评估属于知识问答/事实类任务，StringMatch（substring/fuzzy）能过滤 40-60% 的样本，只对模糊区域调用 LLMGrader，显著降低成本。阈值设置：fuzzy 匹配 score<0.6 时触发 LLM（经验安全值），而非 score<1.0（完全匹配才触发 LLM 会漏掉大量高置信正确案例）。A（全量 LLM）无视预算；C（仅 ExactMatch）对语义等价答案误判（'北京' vs '中国北京'）；D（Pairwise）适用于无参考答案对比场景。",
+        "toolUseCount": 1
+      },
+      "outputB": {
+        "text": "B — ExactMatchGrader + LLMGrader 二阶段。StringMatchGrader 支持 exact_match，纯本地计算零 API 成本；先 ExactMatch 批量跑，命中直接打 1 分，不命中再转 LLMGrader 二次判断。绝大多数可精确匹配样本被过滤，LLM 调用次数大幅减少。选 A 全量 LLMGrader 预算不够；选 C 仅 ExactMatch 会漏判正确但表达不同的回答；选 D PairwiseGrader 不适合有参考答案的绝对评分场景。",
+        "toolUseCount": 2
+      }
+    },
+    {
+      "taskId": "mixed-scale-aggregation-pitfall",
+      "outputA": {
+        "text": "WeightedSumAggregator 直接对原始分数计算加权和，不内置归一化。Grader A（1-5）与 Grader B（0-1）量纲不同，直接平均使高分域 grader 隐式支配结果（A=3/B=0.9 平均=1.95，不反映业务语义）。修正：在进入 aggregator 之前归一化：normalized_A = (score_A-1)/4，再平均；或用 weights 参数近似补偿（治标不治本）。框架不内置归一化，需在使用层显式处理。",
+        "toolUseCount": 2
+      },
+      "outputB": {
+        "text": "量纲不一致（scale mismatch）：Grader A（1-5）与 Grader B（0-1）值域相差 5 倍，直接平均使 A 的隐式权重远大于 B（A=3/B=0.9 平均=1.95，完全不反映语义）。框架（WeightedSumAggregator）不做自动归一化，是用户责任。根本修复：在 grader 层用 FunctionGrader 包装归一化——async def normalized_a(...): result = await llm_grader_a.aevaluate(**kwargs); return (result.score-1)/4 if not hasattr(result,'error') else 0.0；再配合 GraderConfig 注册到 Runner，确保所有 grader 输出 0-1 后 WeightedSum 才有数学意义。在聚合层用 weights 参数补偿是治标不治本。",
+        "toolUseCount": 1
+      }
+    },
+    {
+      "taskId": "rubric-generator-strategy-choice",
+      "outputA": {
+        "text": "选 B) IterativeRubricsGenerator。已有 50 个标注样本满足最小 20 条要求，≤100 条走 ALL_SAMPLES 全量归纳模式（自动切换，无需配置）。关键：训练数据字段名必须用 label_score（非 score），字段名错误时验证全部静默返回 False、rubric 全部被丢弃但不报错。如果 agenerate 返回空列表，排查：(1) print(list(train_data[0].keys())) 确认是否含 label_score；(2) 若字段是 score 需改名：[{'label_score': d['score'], ...} for d in raw_data]；(3) 启用 verbose=True 查看每条 rubric_valid=True/False 日志。选 A（SimpleRubricsGenerator）不使用标注数据，浪费已有 50 条。",
+        "toolUseCount": 1
+      },
+      "outputB": {
+        "text": "选 B。IterativeRubricsGenerator 通过 Propose-Evaluate-Revise 迭代循环归纳生成 rubric，使用 MCR²（信息理论选择）去冗余，专门设计用于基于标注样本生成 rubric 场景（Auto-Rubric 论文）。50 条标注样本符合其输入格式（query/response/label_score）；选 A（TaskBasedRubricGenerator 无需标注数据，浪费已有 50 条）；选 D（50 条样本塞入 prompt 超 context，且无结构化 rubric，泛化性差）；选 C（手工低效）。",
+        "toolUseCount": 3
+      }
+    },
+    {
+      "taskId": "agentic-grader-tool-format-bug",
+      "outputA": {
+        "text": "根本原因：工具的 aexecute 返回了 str(result)——即 Python repr 格式（单引号），而非合法 JSON（双引号）。str({'score': 3}) 产生 \"{'score': 3}\"，json.loads() 无法解析单引号格式（JSONDecodeError）；调用方对字符串做 result['score'] 键索引触发 TypeError。根本修复必须在工具侧：直接 return dict 而非 return str(result)，或用 json.dumps(result) 确保标准 JSON 格式，调用侧再 json.loads()。调用侧加 isinstance(result, str) 判断后 json.loads() 仅能解析合法 JSON，不能解析 Python repr，因此根本修复只能在工具层。",
+        "toolUseCount": 0
+      },
+      "outputB": {
+        "text": "追溯到 ReActAgent._execute_tool_call（agents.py 第329-344行），result.output 如果是 dict/list 会 json.dumps，但若工具返回的 output 本身是 JSON 字符串而非 dict，调用方做 result['score'] 对字符串索引报 TypeError。修复：在 _parse_agent_output 或调用侧 isinstance(result, str) 时先 json.loads(result)；或在工具实现层保证 result.output 统一返回 dict（与 _execute_tool_call 中已有的 isinstance(result.output, (dict, list)) 判断路径一致）。",
+        "toolUseCount": 2
+      }
+    },
+    {
+      "taskId": "agent-tool-cost-budget",
+      "outputA": {
+        "text": "框架现状：ReActAgent 仅有 max_iterations（默认10）作为内置硬截断，无原生费用预算跟踪。三种控制机制：(1) 收紧 max_iterations（简单任务3，查询任务5，不超7，超限时 metadata['max_iterations_reached']=True 可识别截断样本）；(2) truncate_tool_output（框架已内置，默认4000，缩至500-1000）；(3) 按任务分层调度（AgenticGrader 接受预构建 agent，可注入不同 model 配置，简单任务用轻量模型）。成本与质量权衡：用 tool_calls_count 和 iterations 元数据做事后分析，识别哪类任务真正需要多轮工具调用。",
+        "toolUseCount": 4
+      },
+      "outputB": {
+        "text": "四种互补成本控制机制：(1) max_iterations 分级硬上限（简单任务3，查询任务5，复杂任务10）；(2) asyncio.Semaphore 批量并发限制（sem=asyncio.Semaphore(10)，async with sem: await grader.aevaluate(...)，防批量评估并发费用失控）；(3) truncate_tool_output 减少 context token（默认4000，设1000-2000节省约50%）；(4) 任务分层调度（AgenticGrader 仅用于需要工具查询场景，语义理解改用 LLMGrader 成本降5-20倍）。评估后通过 metadata['max_iterations_reached'] 字段识别截断样本，分析哪类任务真正需要 AgenticGrader。",
+        "toolUseCount": 1
+      }
+    },
+    {
+      "taskId": "llm-grader-json-parse-failure",
+      "outputA": {
+        "text": "框架已实现三层 fallback（LLMGrader._aevaluate L421-L495）：(1) structured_model（Pydantic 结构化输出）；(2) _try_extract_json_from_text 正则扫描 {..} 子串；(3) _extract_score_from_text 多组正则（score/rating/数字模式）。全部失败返回 GraderError(error='ParseError')不抛异常。进一步建议：在 template 末尾附加 'JSON (and NOTHING else):' 引导符（多个内置 grader 已有此模式）；评估后统计 GraderError 占比超5%触发重跑；利用 raw_content 分析失败样本共同特征。",
+        "toolUseCount": 4
+      },
+      "outputB": {
+        "text": "首选（根本手段）：structured_model 参数传入 Pydantic 模型——from pydantic import BaseModel; class GradeOutput(BaseModel): score: int; reason: str; grader = LLMGrader(model=model, template='...', structured_model=GradeOutput)——要求模型支持 function calling 接口，比 response_format='json_object' 更可靠（由 schema 而非正则保证）。Fallback 链：第一级 json.loads()；第二级正则提取 JSON 块；第三级关键词映射；全部失败返回 GraderError(error='ParseError')不崩溃。批量后监控：error_rate = sum(hasattr(r,'error') for r in results['grader'])/len(results['grader'])；超 10% 则 composite 已动态重加权，分数失真，需检查 structured_model 兼容性或降低 max_concurrency。",
+        "toolUseCount": 1
+      }
+    },
+    {
+      "taskId": "agent-grader-tool-call-grader-selection",
+      "outputA": {
+        "text": "ToolCallAccuracyGrader：评分量程1-5，聚焦单次工具调用的工具名+参数正确性，需 tool_definitions；TrajectoryAccuracyGrader：评分量程1-3（仅3档，注意量纲），评估整条轨迹逻辑连贯性、目标推进、效率；OutcomeGrader（框架中无此类，最接近是 CorrectnessGrader，1-5，只看最终结果）。本案例最优：ToolCallAccuracyGrader + TrajectoryAccuracyGrader 联合（外部 API 调用需同时验证单次调用准确性和整体路径合理性）；有参考调用序列时可加 ToolCallStepSequenceMatchGrader 为第三维度。",
+        "toolUseCount": 4
+      },
+      "outputB": {
+        "text": "三种 grader 场景矩阵（含量程）：ToolCallAccuracyGrader（1-5）评估单步工具选择正确性（API 参数验证）；TrajectoryComprehensiveGrader（1-3，注意非1-5）评估全链路决策质量（路径效率+逻辑+目标对齐）；OutcomeGrader（CorrectnessGrader，1-5）仅看最终结果。本案例最优：TrajectoryComprehensiveGrader 主（权重0.6）+ ToolCallAccuracyGrader 辅（权重0.4），量纲归一化后再加权：trajectory_norm=(score-1)/2，tool_call_norm=(score-1)/4；composite=0.6*trajectory_norm+0.4*tool_call_norm。若只选一个：TrajectoryComprehensiveGrader 为首选（覆盖全链路质量）。API 参数准确性是核心业务指标时，增加 ToolCallAccuracyGrader 权重至 0.6。",
+        "toolUseCount": 1
+      }
+    },
+    {
+      "taskId": "grader-validation-methodology",
+      "outputA": {
+        "text": "使用框架内置 analyzer 模块（openjudge/analyzer/validation/）：CorrelationAnalyzer（Pearson 相关，通过线≥0.75）、AccuracyAnalyzer（精确匹配，仅适用分类型标注同量纲）、F1ScoreAnalyzer（设 prediction_threshold=3.0 二值化，通过线F1≥0.70）、ConsistencyAnalyzer（两次运行一致性，通过线≥0.85）。通过标准：Pearson≥0.75、二值化F1≥0.70、内部一致性≥0.85、FalsePositive率≤0.15。100条数据对 Pearson 统计检验力足够（p<0.001 at r=0.75, n=100）。",
+        "toolUseCount": 2
+      },
+      "outputB": {
+        "text": "三步验证（顺序不可颠倒，一致性是前提）：(1) ConsistencyAnalyzer 两轮运行，Pearson≥0.75（不达标停止）：c_result = consistency.analyze(dataset, run1_results, run2_results)；(2) CorrelationAnalyzer(label_key='label_score') Pearson≥0.75；(3) AccuracyAnalyzer accuracy≥0.70。多场景补充：二分类（pass/fail）用 Cohen's Kappa≥0.6 + accuracy≥85%（from sklearn.metrics import cohen_kappa_score）；排名（listwise）用 Kendall's Tau≥0.7（from scipy.stats import kendalltau）。注意：ConsistencyAnalyzer 须显式传三个参数；量纲须一致才可直接比较（LLMGrader 1-5 vs label 1-5 可直接，否则先归一化）。",
+        "toolUseCount": 0
+      }
+    }
+  ]
+}

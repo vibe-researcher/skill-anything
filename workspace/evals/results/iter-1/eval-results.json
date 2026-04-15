@@ -1,0 +1,137 @@
+{
+  "iteration": 1,
+  "tasks": [
+    {
+      "taskId": "grader-type-selection-mcq",
+      "withSkill": {
+        "text": "答案 A) LLMGrader。基于 Skill 的决策树：礼貌程度是语义判断（排除 ExactMatch），是单条绝对评分（排除 Pairwise），OpenJudge 中 RubricGrader 并非独立类而是 LLMGrader 的配置方式，因此直接选 LLMGrader。",
+        "toolUseCount": 4
+      },
+      "withoutSkill": {
+        "text": "答案 A) LLMGrader。礼貌程度是主观语义质量属性，需要 LLM 语义理解能力评分，LLMGrader（pointwise 模式）最适合；ExactMatch 不适合主观任务，PairwiseGrader 用于对比而非单独评分。",
+        "toolUseCount": 4
+      }
+    },
+    {
+      "taskId": "runner-grader-configs-format",
+      "withSkill": {
+        "text": "grader_configs 必须是 dict（key=名称，value=GraderConfig/dict），传 list 导致 AttributeError: 'list' object has no attribute 'items'（源码 grading_runner.py 第 181 行）。修复：改为以 grader 名为 key 的 dict，结果通过 results['relevance'] 访问。",
+        "toolUseCount": 6
+      },
+      "withoutSkill": {
+        "text": "grader_configs 应为 dict（键为 grader 名称，值为配置对象），而非 list。GradingRunner.__init__ 内部调用 .items() 遍历（第 181 行），传 list 触发 AttributeError。修复：将外层 list 改为 dict，每个 grader 配置加字符串名作为 key。",
+        "toolUseCount": 5
+      }
+    },
+    {
+      "taskId": "weighted-aggregator-silent-bug",
+      "withSkill": {
+        "text": "WeightedSumAggregator 对缺失 key 使用 weights.get(grader_name, 0.0)，导致 tool_selection 被静默赋予权重 0、完全排除在聚合之外，同时其余两个 grader 的实际权重比例（42.9%/57.1%）悄然偏离用户配置（0.3/0.4），全程无异常抛出。修复：在 GradingRunner 初始化时校验权重 key 覆盖。",
+        "toolUseCount": 7
+      },
+      "withoutSkill": {
+        "text": "WeightedSumAggregator 对权重字典中缺失的 grader 静默使用 weight=0.0，导致该 grader 分数被完全丢弃，且剩余权重被重新归一化，最终评分偏低、比例失真，无任何警告或异常。数值示例：三个 grader 正确均等得分≈0.767，实际输出≈0.686（低估约10.5%）。",
+        "toolUseCount": 5
+      }
+    },
+    {
+      "taskId": "grader-rank-validation-error",
+      "withSkill": {
+        "text": "rank=0 在 LLM 输出路径触发 Pydantic ValidationError（schema.py validate_rank: all ranks must be positive integers），被 GradingRunner 捕获为 GraderError，不崩溃但权重失真。在训练数据 label_rank 路径则静默被当作最优 rank（语义错误，无报错）。正确处理：数据入口清洗，拒绝含 ≤0 的 rank 记录。",
+        "toolUseCount": 9
+      },
+      "withoutSkill": {
+        "text": "rank=0 触发 pydantic.ValidationError（RankValidation.validate_rank: x<=0 不合法），被 GradingRunner 的 except Exception 捕获为 GraderError，流程不崩溃但该记录无有效输出。修复方式：预处理阶段过滤无效 rank，或配置允许 0 值（若业务需要）。",
+        "toolUseCount": 12
+      }
+    },
+    {
+      "taskId": "evaluation-strategy-selection",
+      "withSkill": {
+        "text": "推荐策略 B（ExactMatchGrader + LLMGrader 二阶段）。Skill 明确指出有明确正确答案改用 CorrectnessGrader；先用零成本 ExactMatch 过滤精确匹配样本（约30-60%），剩余样本调 LLMGrader。合并分数需归一化。D（Pairwise）因有参考答案且成本爆炸被排除；C 漏报率高；A 成本固定100× API。",
+        "toolUseCount": 4
+      },
+      "withoutSkill": {
+        "text": "最优方案 B（ExactMatchGrader + LLMGrader 二阶段）。ExactMatch 零成本过滤精确匹配样本，未命中再走 LLM，兼顾预算和准确性；方案 C 漏报率高，方案 A 全量 LLM 超预算，方案 D 的 PairwiseGrader 设计用于两两对比而非有参考答案的绝对评分。GradingRunner 的 SemaphoreResourceExecutor 支持并发提升吞吐。",
+        "toolUseCount": 7
+      }
+    },
+    {
+      "taskId": "mixed-scale-aggregation-pitfall",
+      "withSkill": {
+        "text": "问题根因是量纲不一致（1-5 vs 0-1），直接平均导致 Grader A 实际权重是 Grader B 的 4 倍。OpenJudge Skill 明确说明框架无全局归一化，组合时必须显式归一化。修正：normalized_A = (score_A-1)/4，再平均。",
+        "toolUseCount": 4
+      },
+      "withoutSkill": {
+        "text": "问题是量纲不一致（1-5 vs 0-1）直接平均导致 A 实际权重约为 B 的 5 倍（例：A=3/5, B=1.0 → 平均=2.0，低于中值）。OpenJudge WeightedSumAggregator 支持自定义权重但也需先归一化。修正：各分数映射到 [0,1] 后再做平均/加权平均。",
+        "toolUseCount": 6
+      }
+    },
+    {
+      "taskId": "rubric-generator-strategy-choice",
+      "withSkill": {
+        "text": "推荐策略 B（IterativeRubricsGenerator）。50个带label_score的标注样本触发 ALL_SAMPLES 全量归纳模式（≤100样本），Propose-Evaluate-Revise 循环从数据中提炼与真实标注高度一致的结构化 rubric。注意字段名须用 label_score，50样本≤100无需 DASHSCOPE_API_KEY。人工审查(C)作辅助校验。",
+        "toolUseCount": 6
+      },
+      "withoutSkill": {
+        "text": "推荐策略 B（基于示例归纳生成）。50个标注样本驱动 IterativeRubricsGenerator（Auto-Rubric 框架），经 Propose-Evaluate-Revise 迭代和 MCR² 信息论筛选输出高质量 rubric。比 zero-shot(A) 对齐性更好，比人工手写(C)更高效，比 few-shot(D) 更可解释可复用。",
+        "toolUseCount": 7
+      }
+    },
+    {
+      "taskId": "agentic-grader-tool-format-bug",
+      "withSkill": {
+        "text": "根本原因：agents.py _execute_tool_call 第331行 str(result.output) 将 dict 转为 Python repr（单引号，非合法 JSON）。传播链：工具输出→str→LLM原样输出→调用方['score']→TypeError。修复：isinstance(result.output, (dict,list))时改用 json.dumps()。",
+        "toolUseCount": 12
+      },
+      "withoutSkill": {
+        "text": "bug 在 openjudge/agentic/agents.py:331，str(result.output) 将 dict 转为 Python repr 字符串（非 JSON），调用方用字符串索引时报 TypeError。修复：对 dict/list 类型改用 json.dumps()：result = json.loads(result) if isinstance(result, str) else result。",
+        "toolUseCount": 8
+      }
+    },
+    {
+      "taskId": "agent-tool-cost-budget",
+      "withSkill": {
+        "text": "核心方案：ReActAgent 构建时强制 max_iterations 硬上限（简单3，中等5，复杂≤10），同时降低 GradingRunner max_concurrency（默认32→5以内）；选型降级（无实时工具需求改用 LLMGrader，降费5-20倍）；不叠加 Voting/Average 策略；truncate_tool_output=1000（默认4000）。",
+        "toolUseCount": 8
+      },
+      "withoutSkill": {
+        "text": "定位5个根因（max_iterations=10默认值、context累积、truncate_tool_output=4000、并发=32、无预算上限），提出限制 max_iterations=3、truncate=1000、concurrency=8、子类监控四种措施。预期节省60-70% token/次，批量总成本降70-80%。",
+        "toolUseCount": 7
+      }
+    },
+    {
+      "taskId": "llm-grader-json-parse-failure",
+      "withSkill": {
+        "text": "两条失败路径：json_repair返回非dict或parsed.pop('score')触发KeyError。四层防御：P0在_aevaluate增加raw_content正则fallback（与AgenticGrader一致）；P1修复模型层parsed类型检查；P2强化prompt约束；P3可选VotingStrategy(3)。不建议静默返回默认分数，应返回GraderError。",
+        "toolUseCount": 10
+      },
+      "withoutSkill": {
+        "text": "LLMGrader._aevaluate 中 parsed.pop 无键检测导致 KeyError。三层防御：grader层多策略JSON提取（json_repair→markdown正则→score字段正则）+返回GraderError；模型层在 repair_and_load_json 非dict时额外正则提取；prompt末尾强化JSON约束。",
+        "toolUseCount": 8
+      }
+    },
+    {
+      "taskId": "agent-grader-tool-call-grader-selection",
+      "withSkill": {
+        "text": "三者区别：ToolCallAccuracyGrader评估单步工具调用准确性（1-5分）；TrajectoryAccuracyGrader评估完整决策路径质量（1-3分）；OutcomeGrader(CorrectnessGrader)仅看最终结果。本案例最优：ToolCallAccuracyGrader（主，0.6权重）+ TrajectoryAccuracyGrader（辅，0.4权重）。注意：两者量纲不同，聚合前需归一化。OutcomeGrader不存在独立类。",
+        "toolUseCount": 9
+      },
+      "withoutSkill": {
+        "text": "TrajectoryGrader（TrajectoryComprehensiveGrader）为本案例首选，评估完整API调用路径质量（多步推理连贯性、冗余步骤）；ToolCallAccuracyGrader 定位单步失败；OutcomeGrader 仅看最终结果，无法定位错误步骤。最优：Trajectory为主 + ToolCallAccuracy补充。",
+        "toolUseCount": 6
+      }
+    },
+    {
+      "taskId": "grader-validation-methodology",
+      "withSkill": {
+        "text": "三层验证体系：前置门控（ConsistencyAnalyzer r>=0.70 + DistributionAnalyzer stdev>0.3）；核心指标（CorrelationAnalyzer Pearson r>=0.75必须）；辅助指标（AccuracyAnalyzer>=0.60或F1>=0.70满足其一）。关键陷阱：label_path须显式传'label_score'，量纲须统一，GraderError比例<5%。",
+        "toolUseCount": 8
+      },
+      "withoutSkill": {
+        "text": "验证方法：Accuracy>=0.75且F1>=0.70为通过线（二分类），连续分用 Pearson/Spearman 相关系数（目标>0.8），分析误差分布（绝对误差均值、P95），对高分歧案例人工审查，设测试集防过拟合。使用 OpenJudge 内置 AccuracyAnalyzer/F1ScoreAnalyzer/CorrelationAnalyzer。",
+        "toolUseCount": 13
+      }
+    }
+  ]
+}

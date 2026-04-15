@@ -1,0 +1,50 @@
+[
+  {
+    "taskId": "grader-type-selection-mcq",
+    "aIsWithSkill": false
+  },
+  {
+    "taskId": "runner-grader-configs-format",
+    "aIsWithSkill": true
+  },
+  {
+    "taskId": "weighted-aggregator-silent-bug",
+    "aIsWithSkill": false
+  },
+  {
+    "taskId": "grader-rank-validation-error",
+    "aIsWithSkill": true
+  },
+  {
+    "taskId": "evaluation-strategy-selection",
+    "aIsWithSkill": true
+  },
+  {
+    "taskId": "mixed-scale-aggregation-pitfall",
+    "aIsWithSkill": false
+  },
+  {
+    "taskId": "rubric-generator-strategy-choice",
+    "aIsWithSkill": true
+  },
+  {
+    "taskId": "agentic-grader-tool-format-bug",
+    "aIsWithSkill": true
+  },
+  {
+    "taskId": "agent-tool-cost-budget",
+    "aIsWithSkill": false
+  },
+  {
+    "taskId": "llm-grader-json-parse-failure",
+    "aIsWithSkill": false
+  },
+  {
+    "taskId": "agent-grader-tool-call-grader-selection",
+    "aIsWithSkill": false
+  },
+  {
+    "taskId": "grader-validation-methodology",
+    "aIsWithSkill": false
+  }
+]

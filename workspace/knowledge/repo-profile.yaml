@@ -1,0 +1,61 @@
+stats:
+  total_source_files: 371
+  total_files: 574
+  primary_language: Python
+  has_readme: true
+  has_docs: true
+  has_examples: true
+  notable_dirs:
+  - cookbooks/
+  - docker/
+  - docs/
+  - experiments/
+  - openjudge/
+  - skills/
+  - tests/
+  - ui/
+  language_breakdown:
+    Python: 364
+    JavaScript: 7
+directory_tree:
+  'openjudge/ # 164 files, package root':
+    graders/: 94 files
+    models/: 15 files
+    analyzer/: 15 files
+    generator/: 11 files
+    runner/: 9 files
+    utils/: 8 files
+    evaluation_strategy/: 6 files
+    agentic/: 5 files
+  'cookbooks/ # 109 files':
+    paper_review/: 44 files
+    ref_hallucination_arena/: 21 files
+    finance_grader/: 14 files
+    training_judge_model/: 8 files
+    auto_arena/: 7 files
+    agentic_grader/: 6 files
+    grader_validation/: 3 files
+    claude_authenticity/: 2 files
+    multi_turn_dialogue/: 1 files
+    integrations/: 1 files
+    data_refinement/: 1 files
+    pairwise_evaluation/: 1 files
+  'ui/ # 90 files':
+    features/: 62 files
+    shared/: 21 files
+    core/: 6 files
+  'docs/ # 7 files':
+    javascripts/: 7 files
+  'experiments/ # 1 files': null
+entry_exports:
+  ui/app.py:
+  - UI_DIR = ...
+  - def _check_storage_cleanup()
+  - def main()
+  ui/shared/i18n/translations/__init__.py:
+  - def _merge_dicts()
+  - def get_all_translations()
+  openjudge/graders/code/_utils/__init__.py:
+  - def compute_score()
+  cookbooks/paper_review/disciplines/__init__.py:
+  - def get_discipline()

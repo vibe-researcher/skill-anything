@@ -1,0 +1,74 @@
+[
+  {
+    "id": "grader-type-selection-mcq",
+    "description": "给定一个评估场景（对话回复的礼貌程度），要求选择最合适的 grader 类型。选项包括：A) LLMGrader  B) RubricGrader  C) PairwiseGrader  D) ExactMatchGrader。",
+    "expectedBehavior": "选择 B) RubricGrader，因为礼貌程度需要基于预定义的评分维度（rubric）进行结构化评估，LLMGrader 虽可用但缺乏一致性，ExactMatch 不适合主观任务，PairwiseGrader 用于比较而非单独评分。",
+    "judgingCriteria": "正确选择 RubricGrader 并给出合理理由；若选择 LLMGrader 并说明需自定义 prompt 模板，可得部分分；选择其他选项不得分。"
+  },
+  {
+    "id": "runner-grader-configs-format",
+    "description": "提供一段调用 OpenJudge Runner 的 Python 代码片段，其中 grader_configs 参数格式错误（传入了 list 而非 dict）。要求识别并修复错误。",
+    "expectedBehavior": "识别出 grader_configs 应为 dict（键为 grader 名称，值为配置对象），而非 list。提供修正后的代码，将 list 改为对应的 dict 格式。",
+    "judgingCriteria": "准确识别类型错误（list vs dict）；给出可运行的修正代码；说明 dict key 的命名约定（如使用 grader class name 或自定义标识符）。"
+  },
+  {
+    "id": "weighted-aggregator-silent-bug",
+    "description": "给出一段使用 WeightedAggregator 的代码，权重列表长度与 grader 数量不匹配，但代码未报错（静默 bug）。要求找出潜在问题并说明影响。",
+    "expectedBehavior": "发现权重列表比 grader 列表少一个元素，导致最后一个 grader 的分数被忽略或使用默认权重 0。说明这会使评分结果偏低且不反映真实加权意图，属于静默数据错误。",
+    "judgingCriteria": "准确定位权重数量不匹配的问题；说明静默失败的风险；提供修正后的权重列表或建议添加长度校验断言。"
+  },
+  {
+    "id": "grader-rank-validation-error",
+    "description": "一个 RankGrader 配置中，rank 范围设置为 1-5，但评估数据中某条记录的 rank 字段值为 0。要求预测运行时行为并说明正确处理方式。",
+    "expectedBehavior": "预测会抛出 ValidationError（rank=0 不在合法范围 1-5 内）。说明应在数据预处理阶段过滤或修正无效 rank 值，或将 RankGrader 配置为允许 0 值（若业务逻辑允许）。",
+    "judgingCriteria": "正确预测 ValidationError；指出数据与 schema 不匹配的根本原因；提供至少一种有效的修复方案。"
+  },
+  {
+    "id": "evaluation-strategy-selection",
+    "description": "场景：需要评估 100 个 LLM 回复的事实准确性，有参考答案，预算有限，要求高吞吐。要求从以下策略中选择最优方案：A) 全部使用 LLMGrader  B) ExactMatchGrader + LLMGrader 二阶段  C) 仅 ExactMatchGrader  D) PairwiseGrader。",
+    "expectedBehavior": "选择 B) 二阶段策略：先用 ExactMatchGrader 快速过滤明确正确/错误的回复，对模糊案例再调用 LLMGrader。这样在保证准确性的同时降低 LLM 调用成本，提升吞吐。",
+    "judgingCriteria": "选择 B 并清晰说明两阶段各自的作用；量化或定性分析成本节约；若选 A 并说明质量优先可得部分分。"
+  },
+  {
+    "id": "mixed-scale-aggregation-pitfall",
+    "description": "一个聚合器将两个 grader 的分数直接平均：Grader A 输出 1-5 分，Grader B 输出 0-1 分。要求识别问题并提出修正方案。",
+    "expectedBehavior": "识别出量纲不一致（scale mismatch）问题：直接平均会导致 Grader A 的分数主导结果。应先对两个 grader 的分数进行归一化（均映射到 0-1 或 0-100），再执行加权平均。",
+    "judgingCriteria": "明确指出量纲不一致；说明直接平均的偏差方向（Grader A 权重被放大）；提供归一化方案（如 min-max normalization 或 z-score）。"
+  },
+  {
+    "id": "rubric-generator-strategy-choice",
+    "description": "需要为「代码可读性评估」自动生成评分 rubric。已有 50 个人工标注的代码示例（含分数）。要求选择 rubric 生成策略：A) 从零让 LLM 生成  B) 基于示例归纳生成  C) 人工手写  D) 直接用示例作为 few-shot prompt。",
+    "expectedBehavior": "选择 B) 基于示例归纳生成：利用已有标注数据让 LLM 归纳出评分维度和等级描述，生成结构化 rubric。这比从零生成更准确，比人工手写更高效，比纯 few-shot 更具可解释性。",
+    "judgingCriteria": "选择 B 并说明利用标注数据的优势；说明归纳生成的 rubric 需要人工审核；若选 D 并说明少样本效果好可得部分分。"
+  },
+  {
+    "id": "agentic-grader-tool-format-bug",
+    "description": "一个 AgenticGrader 的 tool_call 返回了字符串格式的 JSON（而非 dict 对象），导致解析失败。提供错误堆栈，要求定位根本原因并修复。",
+    "expectedBehavior": "定位到 tool_call 返回值未经 json.loads() 解析，直接以字符串传入导致后续 dict 操作失败。修复方案：在 tool 执行层添加 `result = json.loads(result) if isinstance(result, str) else result` 的类型保护。",
+    "judgingCriteria": "准确定位字符串 vs dict 类型错误；提供有效的修复代码；说明防御性解析的最佳实践。"
+  },
+  {
+    "id": "agent-tool-cost-budget",
+    "description": "一个 AgenticGrader 配置了无限制的工具调用次数，在评估复杂任务时产生了过高的 API 费用。要求设计一个成本控制方案。",
+    "expectedBehavior": "建议设置 max_tool_calls 上限（如 10 次）、添加 token budget 限制、使用更小的模型执行工具调用、对重复性工具调用结果进行缓存，以及设置超时中断机制。",
+    "judgingCriteria": "提出至少 3 种成本控制机制；说明 max_tool_calls 是最直接的控制点；讨论成本与评估质量的权衡。"
+  },
+  {
+    "id": "llm-grader-json-parse-failure",
+    "description": "LLMGrader 在批量评估时，某些回复导致 LLM 输出的评分结果无法被 JSON 解析（LLM 输出了自然语言而非 JSON）。要求设计鲁棒的处理方案。",
+    "expectedBehavior": "方案包括：1) 使用结构化输出（structured output / response_format=json_object）强制 LLM 返回 JSON；2) 添加 retry 逻辑（最多 3 次，每次附加纠正 prompt）；3) 解析失败时回退到正则表达式提取分数；4) 记录失败案例供人工审核。",
+    "judgingCriteria": "提出结构化输出作为首选方案；包含 retry 机制；说明优雅降级策略（fallback）；提到失败案例记录与监控。"
+  },
+  {
+    "id": "agent-grader-tool-call-grader-selection",
+    "description": "评估一个需要调用外部 API 的 Agent 轨迹，可选 grader 有：ToolCallAccuracyGrader、TrajectoryGrader、OutcomeGrader。要求说明三者的适用场景及本案例的最优选择。",
+    "expectedBehavior": "ToolCallAccuracyGrader 评估每次工具调用的参数正确性；TrajectoryGrader 评估整个决策路径的合理性；OutcomeGrader 只看最终结果。本案例应组合使用 ToolCallAccuracyGrader（验证 API 调用格式）+ OutcomeGrader（验证任务完成），TrajectoryGrader 可选用于深度分析。",
+    "judgingCriteria": "准确描述三种 grader 的核心差异；给出组合使用的理由；说明单独使用 OutcomeGrader 的局限性（无法定位错误步骤）。"
+  },
+  {
+    "id": "grader-validation-methodology",
+    "description": "团队开发了一个新的 CustomGrader，需要验证其评分与人工标注的一致性。给出 100 条人工标注数据，要求设计验证方法并设定通过标准。",
+    "expectedBehavior": "设计方案：1) 计算与人工标注的 Spearman/Pearson 相关系数（目标 >0.8）；2) 计算 Cohen's Kappa（目标 >0.7）用于分类任务；3) 分析误差分布（绝对误差均值、P95）；4) 对高分歧案例（|grader-human| > 1）进行错误分析；5) 设置测试集防止 grader 过拟合标注数据。",
+    "judgingCriteria": "提出相关系数或 Kappa 等统计指标；给出明确的通过阈值；包含误差分析和错误案例审查；提到防过拟合的测试集划分。"
+  }
+]

@@ -1,0 +1,182 @@
+[
+  {
+    "taskId": "grader-type-selection-mcq",
+    "outputA": {
+      "quality": 2.5,
+      "toolUseCount": 10
+    },
+    "outputB": {
+      "quality": 4.0,
+      "toolUseCount": 4
+    },
+    "winner": "B",
+    "reasoning": "Output A 选择了 LLMGrader，与预期答案 RubricGrader 不符，且论证方向偏差——题目明确列出 RubricGrader 作为独立选项(B)，应优先选择结构化评分而非通用 LLM 评分。Output B 虽然最终也选了 A) LLMGrader，但明确说明 RubricGrader 在 OpenJudge 框架中是 LLMGrader 使用 rubrics 参数的配置模式，这是更准确的框架知识理解，论证链路完整，且工具调用仅 4 次体现了高度内化。",
+    "feedback": "Output B 展示了更深的框架理解：区分了抽象概念（RubricGrader）与实现（LLMGrader+rubrics 参数），避免了概念混淆。但题目选项中明确列有独立的 RubricGrader(B)，若框架确实没有独立类，答案应更清楚地指出这一不一致性。Output A 直接选错且工具调用 10 次却仍未得出准确结论，说明搜索未命中关键信息。",
+    "suggestion": "Skill 文档应明确说明 RubricGrader 与 LLMGrader+rubrics 的关系，避免在 MCQ 场景中产生歧义。"
+  },
+  {
+    "taskId": "runner-grader-configs-format",
+    "outputA": {
+      "quality": 4.5,
+      "toolUseCount": 3
+    },
+    "outputB": {
+      "quality": 4.5,
+      "toolUseCount": 5
+    },
+    "winner": "A",
+    "reasoning": "两个输出均准确定位了问题（list vs dict，.items() 调用崩溃），都给出了正确修复方向，事实层面无差异。Output A 仅用 3 次工具调用达到同等质量，说明对框架内部实现的内化程度更高，路径更高效。",
+    "feedback": "Output A 简洁精准，以最少工具调用给出等效质量的答案，展示了良好的框架知识内化。Output B 多了 2 次调用但并未提供额外价值，两者内容几乎等价。两者均提到了具体源码行号（第181行），说明均有深度访问框架代码，但 A 效率更优。",
+    "suggestion": "Skill 可补充 grader_configs 的完整示例（含多 grader 并行配置场景），帮助快速判断格式正确性而无需检查源码。"
+  },
+  {
+    "taskId": "weighted-aggregator-silent-bug",
+    "outputA": {
+      "quality": 4.0,
+      "toolUseCount": 4
+    },
+    "outputB": {
+      "quality": 5.0,
+      "toolUseCount": 4
+    },
+    "winner": "B",
+    "reasoning": "Output B 不仅识别出静默 bug（weights.get 返回 0.0），还深入分析了分母被缩减（0.7 而非 1.0）导致的等效权重重分配机制，提供了更完整的因果链，并给出了 assert 断言的修复建议。Output A 给出了数值示例证明偏差但未解释分母变化机制，深度略逊。",
+    "feedback": "Output B 表现优秀：精准定位静默机制（get 默认值）、量化分母变化（0.7 vs 1.0）、说明等效权重偏移，并给出可直接使用的防御性断言代码。是对该类静默 bug 的完整分析范本。",
+    "suggestion": "Skill 可增加关于聚合器权重校验的最佳实践章节，明确推荐构造时添加 assert 防御。"
+  },
+  {
+    "taskId": "grader-rank-validation-error",
+    "outputA": {
+      "quality": 4.0,
+      "toolUseCount": 5
+    },
+    "outputB": {
+      "quality": 4.5,
+      "toolUseCount": 6
+    },
+    "winner": "B",
+    "reasoning": "两者均正确预测了 ValidationError 并说明了 GradingRunner 的异常捕获机制。Output B 额外指出 WeightedSumAggregator 动态重加权导致 composite 失真这一连锁影响，分析链更完整，体现出对整个评估流水线的全局理解。Output A 同等质量但缺少下游影响分析。",
+    "feedback": "Output B 优势在于追踪了验证错误的全链路影响（从 ValidationError 到 GraderError 再到聚合失真），这对实际排查问题非常有价值。工具调用多 1 次但换来了更全面的分析。修复建议均合理。",
+    "suggestion": "Skill 应补充单条记录失败时对聚合结果影响的说明，帮助用户理解 composite score 可能静默失真的场景。"
+  },
+  {
+    "taskId": "evaluation-strategy-selection",
+    "outputA": {
+      "quality": 4.0,
+      "toolUseCount": 4
+    },
+    "outputB": {
+      "quality": 4.5,
+      "toolUseCount": 2
+    },
+    "winner": "B",
+    "reasoning": "两者均正确选择 B 并说明了二阶段策略的核心优势。Output B 额外提到 CorrectnessGrader 是有参考答案场景的 Skill 推荐方案，展示了更深的框架语义理解，且仅用 2 次工具调用达到更高质量，效率显著更高。Output A 提到了 20K/s 的性能数据但缺乏对 CorrectnessGrader 的框架级认知。",
+    "feedback": "Output B 以极低的工具调用成本（2 次）给出了高质量答案，并引用了框架推荐方案（CorrectnessGrader），体现出良好的框架知识内化。Output A 虽有性能量化，但对框架语义理解略浅。",
+    "suggestion": "Skill 可明确列出各场景的推荐 grader 组合（如有参考答案→CorrectnessGrader，主观评分→LLMGrader+rubrics），方便快速决策。"
+  },
+  {
+    "taskId": "mixed-scale-aggregation-pitfall",
+    "outputA": {
+      "quality": 4.0,
+      "toolUseCount": 0
+    },
+    "outputB": {
+      "quality": 4.5,
+      "toolUseCount": 2
+    },
+    "winner": "B",
+    "reasoning": "Output A 以 0 次工具调用给出了正确的量纲分析和归一化公式，体现出极高的知识内化。Output B 在同样的正确分析基础上，额外说明了 OpenJudge WeightedSumAggregator 不自动归一化的框架行为，并提出了 FunctionGrader 包装方案，框架层面的操作建议更具体。两者均准确，但 B 的框架落地建议更实用。",
+    "feedback": "Output B 将通用数学知识与框架具体实现结合（WeightedSumAggregator 行为 + FunctionGrader 解法），给出了可直接落地的修复方案。Output A 归一化公式正确但缺乏框架层级的修复指导。",
+    "suggestion": "Skill 应在聚合器章节明确说明量纲归一化是用户责任，并提供 FunctionGrader 包装归一化的示例代码。"
+  },
+  {
+    "taskId": "rubric-generator-strategy-choice",
+    "outputA": {
+      "quality": 3.5,
+      "toolUseCount": 1
+    },
+    "outputB": {
+      "quality": 5.0,
+      "toolUseCount": 2
+    },
+    "winner": "B",
+    "reasoning": "Output A 给出了正确的策略选择（B）但停留在概念层面，未提及框架中的具体实现。Output B 不仅选择正确，还准确引用了 IterativeRubricsGenerator、ALL_SAMPLES 模式、最低 20 条样本要求、label_score 字段名等框架级细节，展示出深度的框架知识内化，是显著更高质量的回答。",
+    "feedback": "Output B 展现了出色的框架知识深度：具体的类名、触发模式、字段约定均准确，直接可操作。仅用 2 次工具调用达到 5 分质量，内化程度极高。Output A 仅 1 次调用但停留在通用策略描述层面，缺乏框架落地指导。",
+    "suggestion": "Skill 中 IterativeRubricsGenerator 的最低样本数量要求和字段命名约定应在文档显著位置标注，这是常见的踩坑点。"
+  },
+  {
+    "taskId": "agentic-grader-tool-format-bug",
+    "outputA": {
+      "quality": 4.5,
+      "toolUseCount": 12
+    },
+    "outputB": {
+      "quality": 4.5,
+      "toolUseCount": 12
+    },
+    "winner": "TIE",
+    "reasoning": "两个输出均准确定位了根本原因（agents.py 中 str(result.output) 将 dict 转为 Python repr 而非 JSON），均指向相同的修复方案（json.dumps），并均引用了相同的源码位置（agents.py 第331-334行）。质量等同，工具调用次数相同，无法区分优劣。",
+    "feedback": "两者均展示了对框架内部代码路径的准确理解，定位精准，修复方案有效。Output B 额外提到了 _parse_agent_output 这一下游影响环节，略微更完整，但差距不足以打破平局。",
+    "suggestion": "Skill 应在 AgenticGrader 章节专门提示 tool 返回值的序列化规范（必须返回 dict，不能返回字符串），并说明 json.dumps 与 str() 的差异，预防此类 bug。"
+  },
+  {
+    "taskId": "agent-tool-cost-budget",
+    "outputA": {
+      "quality": 4.0,
+      "toolUseCount": 6
+    },
+    "outputB": {
+      "quality": 4.5,
+      "toolUseCount": 5
+    },
+    "winner": "B",
+    "reasoning": "两者均提出了 3 种以上成本控制机制，满足评判标准。Output B 提出的 ObservationInformationGain 熔断机制（零额外 LLM 成本）和分级 max_iterations 策略更具创新性和实用价值，给出了 50-80% 成本降低的量化估算。Output A 提到的 ActionLoopDetectionGrader 也有价值，但整体方案设计的系统性略逊。",
+    "feedback": "Output B 提出了独立的 max_tool_calls 参数与 max_iterations 的分离设计，以及零成本的规则熔断方案，显示出更深的架构设计理解。分级阈值建议（5-8/10-15/≤30）给了具体可操作的配置指导。Output A 的 token 预算追踪方向正确但方案描述较抽象。",
+    "suggestion": "Skill 应明确说明 max_iterations 与 max_tool_calls 的区别及最佳实践值，并提供不同复杂度任务的成本控制配置模板。"
+  },
+  {
+    "taskId": "llm-grader-json-parse-failure",
+    "outputA": {
+      "quality": 3.5,
+      "toolUseCount": 11
+    },
+    "outputB": {
+      "quality": 4.5,
+      "toolUseCount": 16
+    },
+    "winner": "B",
+    "reasoning": "Output A 描述了单一的降级处理（GraderError + 日志），方案较简单，未涵盖 retry 机制和多级 fallback 策略。Output B 设计了完整的三级鲁棒解析链（嵌入 JSON 提取→regex 启发式→GraderError），并给出了具体的方法名（_try_extract_json_from_text 等），方案更全面，符合预期行为中的多策略组合要求。但工具调用 16 次偏高。",
+    "feedback": "Output B 的三级降级链设计优秀，覆盖了预期方案中的主要策略。但工具调用 16 次（最高的任务之一）说明对框架现有 parse 逻辑需要大量搜索，内化不足。Output A 方案过于简化，仅覆盖了最基本的错误处理，缺乏 retry 和 fallback。",
+    "suggestion": "Skill 应专门提供 LLMGrader 解析失败的最佳实践章节，包含三级 fallback 模式的模板代码，减少用户需要从零设计的摩擦。"
+  },
+  {
+    "taskId": "agent-grader-tool-call-grader-selection",
+    "outputA": {
+      "quality": 3.5,
+      "toolUseCount": 5
+    },
+    "outputB": {
+      "quality": 4.0,
+      "toolUseCount": 2
+    },
+    "winner": "B",
+    "reasoning": "Output A 选择 ToolCallAccuracyGrader 作为单一最优选择，对 OutcomeGrader 的描述有误（称其为框架中不存在独立类），且未推荐组合使用策略，与预期行为（组合方案）偏差较大。Output B 推荐 TrajectoryGrader 为主并辅以 ToolCallAccuracyGrader，方向更接近完整轨迹评估的需求，且仅用 2 次工具调用完成，内化程度更高。",
+    "feedback": "Output B 正确识别了外部 API 调用场景的核心评估需求是整体决策路径质量，TrajectoryGrader 为主的推荐更合理。Output A 对 OutcomeGrader 存在事实性错误（称其不存在），且单一工具推荐不如组合方案全面。两者对三种 grader 核心差异的描述均基本准确。",
+    "suggestion": "Skill 应明确说明三种 grader 的适用场景矩阵（单步精度/全链路质量/结果验证），以及推荐的组合使用模式，避免用户选错评估维度。"
+  },
+  {
+    "taskId": "grader-validation-methodology",
+    "outputA": {
+      "quality": 4.5,
+      "toolUseCount": 7
+    },
+    "outputB": {
+      "quality": 3.5,
+      "toolUseCount": 4
+    },
+    "winner": "A",
+    "reasoning": "Output A 展示了更完整的验证方法论：分三步（ConsistencyAnalyzer 稳定性 → CorrelationAnalyzer 相关性 → AccuracyAnalyzer 精确匹配）并给出了框架级工具名称，还特别指出量纲归一化的必要性。Output B 方案正确但较简化，缺乏框架工具引用和量纲归一化的关键步骤，通过标准也未涵盖精确匹配维度。",
+    "feedback": "Output A 的三步骤验证框架逻辑严密，引用了框架内置分析器（ConsistencyAnalyzer、CorrelationAnalyzer、AccuracyAnalyzer），并给出了具体阈值（Pearson≥0.75、精确匹配≥0.70）和归一化处理要求，整体方案可直接落地。Output B 的 Cohen's Kappa + Spearman 方向正确，但缺乏框架工具集成和归一化步骤，实操指导性不足。",
+    "suggestion": "Skill 应提供 CustomGrader 验证的完整流程模板，包含三个分析器的调用链和通过标准设定，帮助用户快速建立验证体系。"
+  }
+]

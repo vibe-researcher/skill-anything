@@ -1,0 +1,110 @@
+[
+  {
+    "taskId": "grader-type-selection-mcq",
+    "outputA": { "quality": 3.0, "toolUseCount": 3 },
+    "outputB": { "quality": 4.5, "toolUseCount": 1 },
+    "winner": "B",
+    "reasoning": "Output B 正确选择 RubricGrader（即 LLMGrader+rubrics 模式），并清晰说明了 rubrics 参数如何提升一致性和可审计性，给出了具体的 score=5/3/1 分级示例。Output A 选择 LLMGrader 虽然技术上可接受，但声称 B/C/D 选项在框架中无独立实现的说法会误导读者认为 rubric 功能不可用，而实际上这正是 LLMGrader 的核心参数模式之一。",
+    "feedback": "Output A 对 RubricGrader 的表述容易造成误解。Output B 建立了 LLMGrader+rubrics=RubricGrader 的概念映射，更准确也更实用。",
+    "suggestion": "建议补充 rubrics 参数的具体代码示例，说明 rubrics 列表中每个 dict 的结构（score + description 字段）。"
+  },
+  {
+    "taskId": "runner-grader-configs-format",
+    "outputA": { "quality": 4.6, "toolUseCount": 1 },
+    "outputB": { "quality": 3.8, "toolUseCount": 3 },
+    "winner": "A",
+    "reasoning": "Output A 提供了包含 mapper 字段的完整 dict 示例，并明确说明 dict key 同时是 results 的访问索引，形成了完整的使用链。Output B 也正确识别了 list vs dict 的问题，但示例相对简洁，未展示 mapper 字段的用法。两者都正确，但 A 在实操层面更完整。",
+    "feedback": "Output B 缺少 mapper 配置示例，读者仍需猜测如何将数据集字段名映射到 grader 参数名。Output A 将错误点、修复代码、访问方式串成一个完整流程。",
+    "suggestion": "补充说明 mapper 的点号路径语法（如 'data.field' 格式），以及路径不存在时如何静默返回 None 的边界行为。"
+  },
+  {
+    "taskId": "weighted-aggregator-silent-bug",
+    "outputA": { "quality": 4.0, "toolUseCount": 3 },
+    "outputB": { "quality": 4.7, "toolUseCount": 1 },
+    "winner": "B",
+    "reasoning": "Output B 不仅分析了权重缺失导致的比例偏移（relevance 实际 42.9%、hallucination 57.1%），还提供了可直接复制的 assert 代码防御，并提到了 GraderError 导致的二阶动态重加权问题。Output A 虽然分析正确，但修复建议较为宽泛，未给出具体的防御代码。",
+    "feedback": "Output A 缺少断言代码，读者需要自行实现防御逻辑。Output B 的 assert 模式可以直接作为标准检查模板使用。",
+    "suggestion": "建议说明 assert 的最佳放置位置（聚合器初始化时还是调用时），以及如何在大型项目中将这个检查集成到 CI 流程。"
+  },
+  {
+    "taskId": "grader-rank-validation-error",
+    "outputA": { "quality": 4.6, "toolUseCount": 0 },
+    "outputB": { "quality": 4.0, "toolUseCount": 3 },
+    "winner": "A",
+    "reasoning": "Output A 明确给出了三种修复方案的优先级（数据预处理 > 后处理告警 > prompt 约束），并解释了每个层级的理由（源头阻断 vs 监控 vs 治标）。Output B 也正确预测了 ValidationError 并给出了修复建议，但未对三种方案进行优先级排序，读者难以判断在不同情况下应优先选择哪种。",
+    "feedback": "Output B 三种修复方案并列展示，缺少优先级说明。Output A 的层级化建议在工程实践中更有指导价值。",
+    "suggestion": "建议补充说明 GraderError 对批次整体 composite 失真的量化影响：若某批次中 5% 样本触发 GraderError，实际 composite 偏差幅度大约是多少。"
+  },
+  {
+    "taskId": "evaluation-strategy-selection",
+    "outputA": { "quality": 4.5, "toolUseCount": 1 },
+    "outputB": { "quality": 3.8, "toolUseCount": 2 },
+    "winner": "A",
+    "reasoning": "Output A 正确选择 B（二阶段策略），并给出了关键的阈值设置建议：fuzzy 匹配 score<0.6 时触发 LLM，并解释了为何不应等到 score<1.0 才触发（会漏掉大量高置信正确案例）。还给出了具体的反例（北京 vs 中国北京）说明仅用 ExactMatch 的局限性。Output B 也选对了答案，但阈值设置部分缺失，读者仍不知道在实际部署中如何配置触发条件。",
+    "feedback": "Output B 缺乏具体的阈值指导，而阈值设置正是二阶段策略落地的核心决策点。Output A 的 fuzzy<0.6 触发规则是实操时直接可用的经验值。",
+    "suggestion": "进一步补充不同任务类型下的预期过滤率（如知识问答 40-60%，代码生成 20-40%，开放式几乎无法过滤），帮助用户在采用策略前预估成本收益。"
+  },
+  {
+    "taskId": "mixed-scale-aggregation-pitfall",
+    "outputA": { "quality": 3.9, "toolUseCount": 2 },
+    "outputB": { "quality": 4.6, "toolUseCount": 1 },
+    "winner": "B",
+    "reasoning": "Output B 除了识别量纲不一致问题外，给出了 FunctionGrader 包装归一化的具体 async 函数模式，说明这是在 grader 层解决而非聚合层补偿，是更根本的架构决策。Output A 也识别了问题并给出了 normalized_A=(score_A-1)/4 的公式，但仅提供了计算方法，未说明应在哪个层次（grader 层 vs 聚合层）进行归一化。",
+    "feedback": "Output A 的修复停留在概念层面，未说明如何在代码结构上将归一化嵌入 Runner 流程。Output B 的 FunctionGrader 包装模式是框架惯用的正确做法。",
+    "suggestion": "建议补充完整的 FunctionGrader 包装代码（含 GraderConfig 注册），形成可运行的最小示例，降低读者实施门槛。"
+  },
+  {
+    "taskId": "rubric-generator-strategy-choice",
+    "outputA": { "quality": 4.8, "toolUseCount": 1 },
+    "outputB": { "quality": 3.8, "toolUseCount": 3 },
+    "winner": "A",
+    "reasoning": "Output A 不仅正确选择 IterativeRubricsGenerator，还提供了三步排查步骤来处理 agenerate 返回空列表的情况（这是该 generator 最常见的坑）：检查字段名、重命名、启用 verbose。Output B 也选对了答案，并提到了 label_score 字段要求，但缺少排查指引，当读者遇到静默失败时没有行动路径。",
+    "feedback": "Output B 提到了 label_score 字段要求，但仅作为一个注意事项，没有给出字段名错误时的排查步骤。Output A 将已知的静默失败模式转化为具体的调试路径。",
+    "suggestion": "补充 verbose=True 日志的具体输出格式，帮助用户识别 rubric_valid=False 的模式，找到哪类训练样本最容易导致验证失败。"
+  },
+  {
+    "taskId": "agentic-grader-tool-format-bug",
+    "outputA": { "quality": 5.0, "toolUseCount": 0 },
+    "outputB": { "quality": 3.5, "toolUseCount": 2 },
+    "winner": "A",
+    "reasoning": "Output A 精准定位了根本原因（str(result) 产生 Python repr 格式单引号，而非合法 JSON），并明确指出 json.loads() 无法解析 Python repr，因此修复必须在工具侧而非调用侧。这个分析排除了一个常见的错误修复方向。Output B 建议在调用侧加 json.loads()，但这只能解析合法 JSON 字符串，对 Python repr 格式仍会失败，修复建议存在缺陷。",
+    "feedback": "Output B 的调用侧 json.loads() 建议是错误的修复方向，实际上无法解决 Python repr 格式问题。Output A 通过对比 str() vs json.dumps() 的输出差异，清晰说明了为什么修复只能在工具层。",
+    "suggestion": "建议补充一个对比示例展示 str({'score': 3}) 和 json.dumps({'score': 3}) 的输出差异，让读者直观理解为什么不能在调用侧修复。"
+  },
+  {
+    "taskId": "agent-tool-cost-budget",
+    "outputA": { "quality": 4.1, "toolUseCount": 4 },
+    "outputB": { "quality": 4.8, "toolUseCount": 1 },
+    "winner": "B",
+    "reasoning": "Output B 提供了四种互补机制，其中 asyncio.Semaphore 的并发限制代码（sem=asyncio.Semaphore(10)，async with sem: await grader.aevaluate(...)）是批量评估场景的关键控制点，Output A 完全未提及。Output B 还明确了任务分层调度的核心决策：AgenticGrader 只用于需要工具查询的场景，其余改用 LLMGrader（成本降5-20倍），这是成本控制的最根本手段。Output A 的三种机制较为通用，但缺少并发限制这个关键维度。",
+    "feedback": "Output A 的 metadata['max_iterations_reached'] 说明是有价值的监控细节，Output B 也提到了。但 Output B 额外补充了 Semaphore 并发控制和 AgenticGrader vs LLMGrader 的根本成本差异。",
+    "suggestion": "补充不同成本控制机制的量级对比（如 max_iterations 从10降到5节省约50%成本，而改用 LLMGrader 节省 80-95%），帮助用户优先选择高收益手段。"
+  },
+  {
+    "taskId": "llm-grader-json-parse-failure",
+    "outputA": { "quality": 4.2, "toolUseCount": 4 },
+    "outputB": { "quality": 4.8, "toolUseCount": 1 },
+    "winner": "B",
+    "reasoning": "Output B 提供了可直接复制的 structured_model 配置代码（Pydantic GradeOutput 模型），并说明了它比 response_format='json_object' 更可靠的原因（schema 约束 vs 正则解析）。同时给出了 GraderError 率监控的具体公式和行动阈值（>10% 则 composite 失真）。Output A 也提到了框架内置的三层 fallback，引用源码行号增加可信度，但缺少 structured_model 的使用示例和 GraderError 率的量化监控方法。",
+    "feedback": "Output A 的源码行号引用（L421-L495）是加分点，证明机制已内置。Output B 的 structured_model 代码和 error_rate 计算公式是直接可用的工程实践。",
+    "suggestion": "补充如何验证当前使用的模型是否支持 function calling 接口（structured_model 的前提），以及不支持时的降级处理路径。"
+  },
+  {
+    "taskId": "agent-grader-tool-call-grader-selection",
+    "outputA": { "quality": 3.9, "toolUseCount": 4 },
+    "outputB": { "quality": 4.8, "toolUseCount": 1 },
+    "winner": "B",
+    "reasoning": "Output B 明确给出了量纲归一化公式（trajectory_norm=(score-1)/2，tool_call_norm=(score-1)/4）和完整的 composite 计算式，这是混合使用 TrajectoryComprehensiveGrader（1-3量程）和 ToolCallAccuracyGrader（1-5量程）时的必要步骤。还给出了场景权重调整建议（API 参数准确性为核心时增加 ToolCallAccuracyGrader 权重）。Output A 提到了 ToolCallStepSequenceMatchGrader 作为第三维度，是有价值的扩展，但未给出归一化公式，直接组合这两个量程不同的 grader 会产生量纲错误。",
+    "feedback": "Output A 缺少量纲归一化说明，读者如果直接平均 1-3 和 1-5 量程的 grader 分数会得到无意义的 composite。Output B 的归一化公式是防止这类错误的关键。",
+    "suggestion": "进一步说明何时应优先选择 TrajectoryComprehensiveGrader 为主（多步推理质量关键时），何时应优先 ToolCallAccuracyGrader 为主（API 参数准确性关键时），帮助用户根据业务目标配置权重。"
+  },
+  {
+    "taskId": "grader-validation-methodology",
+    "outputA": { "quality": 4.0, "toolUseCount": 2 },
+    "outputB": { "quality": 4.8, "toolUseCount": 0 },
+    "winner": "B",
+    "reasoning": "Output B 明确强调了三步验证的顺序不可颠倒（ConsistencyAnalyzer 是前提），并给出了三种不同 grader 类型对应的验证指标（连续分数用 Pearson、二分类用 Cohen's Kappa + sklearn、排名用 Kendall's Tau + scipy），覆盖了实际工程中的多种场景。Output A 也提到了多种指标，但阈值有差异（ConsistencyAnalyzer 通过线 0.85 vs B 的 0.75），且未说明三步的顺序约束。",
+    "feedback": "Output A 的 ConsistencyAnalyzer 通过线设为 0.85，比 Output B 的 0.75 更严格，两者存在差异但都有合理性。Output B 对多场景覆盖更全面，且明确了顺序不可颠倒的约束。",
+    "suggestion": "补充各 Analyzer 在框架中的具体调用代码（如 ConsistencyAnalyzer(grader=my_grader, n_runs=2).run(dataset)），将方法论转化为可直接运行的代码。"
+  }
+]

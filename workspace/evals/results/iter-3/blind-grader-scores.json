@@ -1,0 +1,110 @@
+[
+  {
+    "taskId": "grader-type-selection-mcq",
+    "outputA": { "quality": 3.2, "toolUseCount": 3 },
+    "outputB": { "quality": 4.5, "toolUseCount": 1 },
+    "winner": "B",
+    "reasoning": "Output B 明确指出 RubricGrader 是 LLMGrader+rubrics 的配置模式而非独立类，这是关键技术细节；同时系统性排除了 Pairwise（单条绝对评分场景不适用）和 AgenticGrader（无需外部工具），逻辑完整。Output A 虽然选了正确选项，但否认 RubricGrader 存在的表述与预期行为不符，且推理链不够结构化，信息密度低于 B。B 用更少工具调用（1次）产出了更高质量且技术更精准的答案。",
+    "feedback": "A 的核心问题是主动否认了 RubricGrader 的存在形式，会误导用户；B 的表述更贴近系统实际设计。",
+    "suggestion": "A 应补充说明 RubricGrader 是配置模式而非独立类，避免否定性描述引起误解。"
+  },
+  {
+    "taskId": "runner-grader-configs-format",
+    "outputA": { "quality": 4.2, "toolUseCount": 1 },
+    "outputB": { "quality": 4.4, "toolUseCount": 2 },
+    "winner": "B",
+    "reasoning": "两者都正确识别了 list vs dict 的类型错误，并准确指出了报错位置（.items() 调用处）和错误类型（AttributeError）。Output B 的优势在于明确给出了完整的正确写法示例，包含两个 grader 的完整 dict 结构，且明确了 Dict[str, GraderConfig] 的类型签名，工程可操作性更强。Output A 虽然也给出了修复方向，但示例不如 B 完整具体。两者质量相近，B 略胜。",
+    "feedback": "A 提到了结果访问方式（results['relevance']），是额外有价值的细节，B 未涵盖。",
+    "suggestion": "B 可补充说明修复后如何访问各 grader 的结果，使答案更完整。"
+  },
+  {
+    "taskId": "weighted-aggregator-silent-bug",
+    "outputA": { "quality": 4.8, "toolUseCount": 1 },
+    "outputB": { "quality": 4.3, "toolUseCount": 3 },
+    "winner": "A",
+    "reasoning": "Output A 在三个维度都优于 B：(1) 更深入分析了权重重新归一化效应（relevance 实际 0.43，hallucination 实际 0.57），而非仅说'被放大'；(2) 额外指出了 GraderError 时同批次聚合失真的次级 bug，展示了系统性思维；(3) 提供了更精确的防御性修复（assert set(weights) == set(grader_names)）。Output B 虽然给出了数值计算示例（0.7/0.7=1.0），但对权重实际分布的分析不如 A 精准，且使用了更多工具调用。",
+    "feedback": "B 的数值举例（final_score=1.0）实际上是特殊情况，当分数不完美时结论略有不同；A 的等效权重分析（0.43/0.57）更通用准确。",
+    "suggestion": "B 应补充 GraderError 场景下的聚合失真问题，并提供断言式的防御修复方案。"
+  },
+  {
+    "taskId": "grader-rank-validation-error",
+    "outputA": { "quality": 4.3, "toolUseCount": 0 },
+    "outputB": { "quality": 4.5, "toolUseCount": 2 },
+    "winner": "B",
+    "reasoning": "Output B 更完整：明确给出了错误消息文本（'All ranks should be positive integers'），识别了具体的校验逻辑（any(x <= 0 for x in rank)），并提供了两种修复方案（数据预处理 + grader 回调层捕获）。Output A 也涵盖了 WeightedSumAggregator 聚合失真的次级影响，这是重要补充，但 0 工具调用让答案略显笼统，缺少具体代码级细节。整体 B 更精确，A 的聚合失真分析是加分项但不足以逆转差距。",
+    "feedback": "A 关于 WeightedSumAggregator 重新归一化导致聚合失真的分析非常有价值，B 没有涵盖这个次级影响。",
+    "suggestion": "B 应补充 GraderError 对批量评估结果聚合的影响分析，使答案更全面。"
+  },
+  {
+    "taskId": "evaluation-strategy-selection",
+    "outputA": { "quality": 4.3, "toolUseCount": 1 },
+    "outputB": { "quality": 4.3, "toolUseCount": 3 },
+    "winner": "TIE",
+    "reasoning": "两个输出内容高度相似，都正确选择了 B（二阶段策略），都给出了 30-60% 过滤率的量化数据，都系统性排除了其他三个选项并说明了原因。A 用更少的工具调用（1次）达到了相同质量，效率更高，但内容质量几乎一致，差异不足以分出胜负。两者均符合预期行为。",
+    "feedback": "两者质量相当，A 的效率（1次工具调用）优于 B（3次），但质量得分相同。",
+    "suggestion": "可补充具体说明在哪类情况下 ExactMatch 可以直接判定（完全匹配），哪类需要升级到 LLMGrader（语义等价但文本不同），使策略边界更清晰。"
+  },
+  {
+    "taskId": "mixed-scale-aggregation-pitfall",
+    "outputA": { "quality": 4.6, "toolUseCount": 1 },
+    "outputB": { "quality": 4.2, "toolUseCount": 2 },
+    "winner": "A",
+    "reasoning": "Output A 明确指出 WeightedSumAggregator 不做自动归一化这一关键系统特性，这是预期答案中的核心知识点；并提供了两种修复路径（内联归一化公式 + FunctionGrader 包装），且明确标注了生产推荐方式。Output B 虽然也给出了相同的归一化公式，但未提及系统不做自动归一化的设计特性，缺少这一背景知识会让用户不理解为何需要手动处理。A 用更少工具调用产出了更完整的答案。",
+    "feedback": "B 缺少对 WeightedSumAggregator 不自动归一化这一设计决策的说明，用户可能不明白为何系统不自动处理。",
+    "suggestion": "B 应补充系统设计说明，解释为何需要用户手动归一化，并推荐 FunctionGrader 作为生产级解决方案。"
+  },
+  {
+    "taskId": "rubric-generator-strategy-choice",
+    "outputA": { "quality": 4.8, "toolUseCount": 1 },
+    "outputB": { "quality": 4.0, "toolUseCount": 3 },
+    "winner": "A",
+    "reasoning": "Output A 的关键优势在于指出了 label_score 字段名的陷阱——训练数据必须用 label_score 而非 score，否则验证静默返回 False 导致 rubric 全部丢弃但不报错。这是一个极其重要的实践细节，是预期答案明确要求的。Output B 虽然解释了 IterativeRubricsGenerator 的工作机制（Propose-Evaluate-Revise 循环）更详细，但完全遗漏了 label_score 字段名陷阱，而这个陷阱在实际使用中会导致静默失败，是最关键的差异化知识点。",
+    "feedback": "B 对 IterativeRubricsGenerator 的机制描述（Propose-Evaluate-Revise）比 A 更详细，但遗漏了 label_score 字段陷阱这一核心实践知识。",
+    "suggestion": "B 必须补充 label_score 字段名要求及其静默失败的影响，这是使用该策略时最容易犯的错误。"
+  },
+  {
+    "taskId": "agentic-grader-tool-format-bug",
+    "outputA": { "quality": 4.5, "toolUseCount": 0 },
+    "outputB": { "quality": 4.3, "toolUseCount": 3 },
+    "winner": "A",
+    "reasoning": "Output A 额外分析了为何 json.loads 也无法解析 str(dict) 输出——因为 Python repr 使用单引号而非合法 JSON 双引号，这是一个重要的技术细节，说明简单的 json.loads 修复可能也不够。A 的诊断更深入。Output B 给出的修复代码（isinstance 判断 + json.loads）是正确的，但未解释 Python repr 与 JSON 的格式差异。A 用 0 工具调用（纯知识推理）达到了更高质量，显示了更强的领域理解。",
+    "feedback": "B 的修复代码更完整（包含 isinstance 判断），但对根因的分析深度不如 A（未说明 str(dict) 生成单引号格式问题）。",
+    "suggestion": "两者都应明确指出正确的根本修复是让工具直接返回 dict，json.loads 是防御性 fallback 而非首选。"
+  },
+  {
+    "taskId": "agent-tool-cost-budget",
+    "outputA": { "quality": 4.5, "toolUseCount": 3 },
+    "outputB": { "quality": 4.4, "toolUseCount": 3 },
+    "winner": "A",
+    "reasoning": "两者都给出了三种机制且质量相近。Output A 的优势在于：(1) 提出了分级 max_iterations（简单5-8，中等10-15，复杂≤30）而非单一默认值，更具实用性；(2) 二阶段过滤方案（ExactMatch 先过滤再触发 AgenticGrader）是一个系统级成本优化思路，体现了对整体评估流水线的理解；(3) 给出了量化收益（50-80% 费用降低）。Output B 的 asyncio.Semaphore 并发控制是一个有价值的补充点，但 token 预估方案较笼统。",
+    "feedback": "B 的 Semaphore 并发控制方案是 A 未提及的有效机制；A 的二阶段过滤思路更具系统性。",
+    "suggestion": "理想答案应结合 A 的分级上限+二阶段过滤与 B 的并发信号量控制，三者互补形成完整方案。"
+  },
+  {
+    "taskId": "llm-grader-json-parse-failure",
+    "outputA": { "quality": 4.5, "toolUseCount": 3 },
+    "outputB": { "quality": 4.6, "toolUseCount": 3 },
+    "winner": "B",
+    "reasoning": "Output B 的优势在于明确描述了代码中已有的三层 fallback 实现（structured_model → _try_extract_json_from_text → _extract_score/rank_from_text），这说明 B 对实际代码结构有更深入的了解，给出的建议是基于现有实现的增量改进而非重新设计。Output A 的方案是从零设计的，虽然结构合理，但可能与实际代码有重叠或冲突。B 还提出了第四级 fallback（中位数默认分+重跑），并给出了具体的 prompt 工程建议（用户 prompt 末尾追加 'JSON:' 引导符）。",
+    "feedback": "A 提出的 5% GraderError 率告警阈值和 --retry-errors 重跑标志是很实用的运维建议，B 未完全覆盖。",
+    "suggestion": "B 应补充错误率监控阈值和批量重跑机制；A 应先分析现有代码中已有的 fallback 层次，避免重复建议。"
+  },
+  {
+    "taskId": "agent-grader-tool-call-grader-selection",
+    "outputA": { "quality": 4.2, "toolUseCount": 3 },
+    "outputB": { "quality": 4.0, "toolUseCount": 2 },
+    "winner": "A",
+    "reasoning": "Output A 提到了 TrajectoryComprehensiveGrader（评估路径效率+逻辑一贯性+目标对齐），这更符合外部 API 多步规划场景的需求。Output B 使用了 TrajectoryAccuracyGrader（评估逻辑连贯性+目标推进效率，评分1-3），两者类名不同，实际上预期行为参考指向 TrajectoryGrader 主 + ToolCallAccuracyGrader 辅的组合。A 给出了明确的权重分配（0.6/0.4）和场景匹配理由，工程实用性更强。B 的评分量程描述（1-3）也是有价值的细节，但组合设计没有 A 完整。",
+    "feedback": "B 提供了 TrajectoryAccuracyGrader 的评分量程（1-3）和 ToolCallAccuracyGrader（1-5）的具体量程，这是有价值的技术细节；A 给出了权重分配比例，可操作性更强。",
+    "suggestion": "最佳答案应结合 A 的权重分配与 B 的量程说明，并明确当只需单一指标时的选择依据。"
+  },
+  {
+    "taskId": "grader-validation-methodology",
+    "outputA": { "quality": 4.7, "toolUseCount": 2 },
+    "outputB": { "quality": 4.2, "toolUseCount": 2 },
+    "winner": "A",
+    "reasoning": "Output A 与系统实际 API 设计高度契合：明确使用了 ConsistencyAnalyzer、CorrelationAnalyzer、AccuracyAnalyzer 三个具体分析器，提供了各自的阈值（≥0.75、≥0.75、≥0.70），并且指出了 label_path='label_score' 的字段名陷阱和 ConsistencyAnalyzer 需要三个参数的具体 API 使用细节。Output B 的方案在统计学上更严谨（Pearson+Spearman+MAE+Kappa+Kendall's Tau），但这些是通用统计方法而非系统 API，没有说明如何与框架集成，实用性受限。对于 CustomGrader 验证这个特定任务，A 的答案更具可操作性。",
+    "feedback": "B 的统计方法体系更完整（涵盖数值/二分类/排名三类场景），是通用验证知识的良好展示，但缺乏与框架 API 的结合。",
+    "suggestion": "B 应结合系统提供的 ConsistencyAnalyzer 等具体工具，将通用统计指标映射到框架 API 调用，使方案可直接执行。"
+  }
+]
