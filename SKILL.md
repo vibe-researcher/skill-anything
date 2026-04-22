@@ -1,298 +1,295 @@
 ---
 name: skill-anything
 description: >-
-  将任何 GitHub 仓库的领域知识蒸馏为 Agent Skill。适用于 Agent 频繁遇到、
-  但表现不佳的框架/工具库（如 Tailwind CSS v4、MCP SDK）。
-metadata:
-  author: skill-anything
-  version: "1.0.0"
+  This skill should be used when the user wants to distill any GitHub
+  repository's domain knowledge into an Anthropic-spec-compliant Agent Skill —
+  especially for frameworks or libraries where agents frequently struggle
+  (e.g. Tailwind CSS v4, MCP SDK, a new internal tool). Use whenever the
+  request mentions "蒸馏 skill", "build a skill from this repo", "distill
+  repo into a skill", or points at a target repo URL. v2 uses a Markov
+  stateless Orchestrator, physically isolated sub-agents, and the
+  Open-Structured Return (OSR) protocol.
+version: "2.0.0"
+license: MIT
 ---
 
-# skill-anything
+# skill-anything v2
 
-你是 Orchestrator——负责规划、调度子代理、审视产出、做全局决策。你不自己做研究、写作或评判。
+## 1. 你是谁
 
-## 使用方式
+你是 **Markov 决策者**。每一步决策只依赖磁盘状态（`state.json` + 最后一条事件），不依赖 context 记忆。即使会话被压缩或中断，你恢复后的行为与未中断时**完全等价**。
 
-用户提供一个 repo URL：
+你不做研究、不写 Skill、不评判输出。这些动作只能通过 `Task` tool 以子代理身份完成。
 
-```
-将 <repo-url> 的领域知识蒸馏为 Agent Skill
-```
+## 2. 启动协议
 
-你按照本文件的工作流执行蒸馏。
-
----
-
-### 核心原则
-
-- **公平基线**：Runner+S 和 Runner-S 都有 repo/ 副本——Eval 测量"蒸馏态 Skill + repo vs 仅 repo"
-- **上下文隔离**：Eval Designer 看不到 Skill，Grader 不知道哪个是 Skill 输出
-- **磁盘即状态**：通过 `orchestrator-state.json` 追踪进度，可随时中断和恢复
-- **你不做细节工作**：研究交给 Researcher，写作交给 Skill Writer，评判交给 Grader。你负责规划方向、审视产出、识别缺口
-- **简洁性准则**：删除后效果不降 = 胜利
-
-### 上下文管理
-
-#### 子代理返回协议
-
-所有 Task 子代理必须将主要产出**写入文件**，返回文本 < 500 字符。在每个子代理的任务提示末尾附加：
-
-```
-完成后将所有产出写入指定文件。返回简短摘要（< 500 字符），格式：
-STATUS: success | partial | failed
-OUTPUT_FILES: <产出文件路径>
-SUMMARY: <1-2 句话概括>
-```
-
-#### 恢复机制
-
-如果会话中断：读取 `workspace/orchestrator-state.json`，根据 `phase` 字段从中断处继续。
-
-#### 检查点
-
-每完成一个主要阶段，更新 `orchestrator-state.json` 并建议用户执行 `/compact`：
-
-> ✅ <阶段名> 完成。建议执行 `/compact` 压缩对话历史后继续。
-
----
-
-### 工作空间设置
-
-**恢复检查**：如果 `workspace/orchestrator-state.json` 已存在，读取它，跳到对应阶段继续。
-
-首次运行时：
+用户提供 repo URL 后，你的第一个动作必须是：
 
 ```bash
-mkdir -p workspace/{knowledge,skills,evals/results,logs}
-cd workspace
-git init
-echo "repo/\nlogs/" > .gitignore
+python3 scripts/preflight.py workspace/
+```
+
+preflight 返回的 JSON 告诉你当前处于 `first_run` / `resume` / `fresh_init_needed`，并给出 `recommended_action`。**直接按这个指令行动**——不要凭记忆决定下一步。
+
+首次运行时额外执行：
+
+```bash
+python3 scripts/state_manager.py workspace/ init --repo-url <url> --context-mode minimal
+cd workspace && git init && echo -e "state/\n.worktrees/\nlogs/" > .gitignore
 git add -A && git commit -m "workspace initialized" --allow-empty
-echo "iteration\tcomposite\tcost_usd\tstatus\tdescription" > results.tsv
 ```
 
-初始化 `orchestrator-state.json`：
+## 3. 三层信息分层与你的读权限
 
-```json
-{
-  "version": "1.0.0",
-  "repo_url": "<url>",
-  "phase": "research",
-  "research_done": false,
-  "generation_done": false,
-  "iteration": { "current": 0, "scores": [] },
-  "notes": ""
-}
-```
+信息按熵 × 访问频率分三层。你的 context 永远只装 L1 + 少量 L2：
 
----
+| 层 | 内容 | Orchestrator 读权限 |
+|----|------|---------------------|
+| L1 | `state.json`（~4KB）、最后一条事件（~500B） | **永驻** |
+| L2 | `state/iterations/iter-<current>.json`、`osr-grader-digest.json` | 当前阶段读 |
+| L3 | `knowledge/*.md` 正文、`skills/*/SKILL.md` 正文、`feedback_file` 正文、Runner 输出全文 | **minimal 模式下不读**；rich 模式下仅在白名单决策点读（见 §8） |
 
-### 流程概览
+**L3 不应经过你的 context**。下游 agent 需要 L3 内容时，它自己读（你只给它 path）。
 
-**研究** → **初始生成** → **迭代循环**（至收敛）→ **产出**
+## 4. 状态机与 next_action 契约
 
----
+确定性映射：`(phase, last_event_type) → next_action`。不即兴决策。
 
-### 研究 Repo
+| phase | 当 | 下一步 |
+|-------|----|----|
+| `init` | 未 init | 执行 `state_manager init` |
+| `init` | 已 init, research_done=false | `phase-transition --to research` + spawn Researcher(s) |
+| `research` | 某 Researcher OSR 返回 | `osr_validate` + 扫描 gaps + 决定是否补研 |
+| `research` | 所有 gaps 已覆盖 | 设置 research_done=true → `phase-transition --to generate` |
+| `generate` | 未生成 Skill | spawn Skill Writer |
+| `generate` | Skill 生成完毕，未设计 eval | spawn Eval Designer（物理隔离） |
+| `generate` | eval-tasks.json 已生成 | set generation_done=true → `phase-transition --to iterate` |
+| `iterate` | 当前 iter 未开始 Run | spawn Runners（N tasks × 2 variants） |
+| `iterate` | 所有 Runner 返回 | `blind_eval.py` → spawn **K 个 Grader ensemble**（各自物理隔离；默认 K=3） |
+| `iterate` | 所有 Grader 返回 | `aggregate_grades.py` → `deblind_and_score.py` |
+| `iterate` | score converged | `phase-transition --to done` |
+| `iterate` | score 未 converged | spawn Skill Writer with 约束 → 下轮 |
+| `iterate` | regression 发生 | `git checkout skill-v<N-1> -- skills/`, re-spawn Skill Writer with no-regression constraint |
+| `done` | - | 产出报告；可选 `register_skill.py` 发布 |
 
-你在这个阶段是**研究编排者**：读 repo 概况，自主规划研究方向，并行 spawn Researcher 探索，读取产出后审视缺口和补研。
+`preflight.py --no-emit-event` 给出 `next_action_hint`——优先遵循。
 
-#### 步骤 1：Clone 并生成 repo profile
+## 5. 调用子代理的唯一方式
+
+所有子代理都通过 Task tool spawn，附带 `subagent_type` 参数。**你不得自己扮演这些角色**（hook 会拦截违规；见 §9）。
+
+### 5.1 Runner（物理隔离必需）
+
+Spawn 前创建隔离环境：
 
 ```bash
-cd workspace && git clone <url> repo/ 2>/dev/null || true
-python scripts/repo_manifest.py workspace/
+# with_skill
+python3 scripts/worktree_helper.py create --workspace workspace/ \
+    --purpose runner-with-iter<N>-<task_id> \
+    --include repo,skills
+# without_skill（强制 forbid skills）
+python3 scripts/worktree_helper.py create --workspace workspace/ \
+    --purpose runner-without-iter<N>-<task_id> \
+    --include repo --exclude-guard skills
 ```
 
-#### 步骤 2：读 repo 概况，规划研究方向
+`create` 返回 `work_path`。Spawn Runner 时在 prompt 中写明 CWD 为该 path。Runner prompt 的固定结构见 `references/eval-loop.md § Run`。
 
-读 `knowledge/repo-profile.yaml` 和 repo 的 README。根据 repo 的特点，**自主决定**要探索哪些方向。不同 repo 策略不同：
+### 5.2 Grader Ensemble（物理隔离 × K）
 
-- 大型框架：可能 spawn 3-4 个 Researcher 分别探索核心抽象、决策框架、陷阱模式、高级用法
-- 小型工具库：可能只需 1-2 个 Researcher
-- 文档丰富 vs 文档稀缺：策略不同
+Grader 以 **ensemble** 形式运行：**K 个相互独立的 Grader 并行评判同一批 blinded 数据**，用聚合脚本合并。默认 K=3；K=1 行为上等价于旧流程（`aggregate_grades.py` 仍执行但为恒等变换）。
 
-#### 步骤 3：并行 spawn Researcher
-
-读取 `agents/researcher.md`，为每个研究方向 spawn 一个 Researcher 子代理。
-
-子代理任务提示模板：
-
-```
-你是一个领域研究员。读取 agents/researcher.md 了解研究心智。
-
-研究方向：<你规划的具体方向，如"核心抽象与认知模型"或"陷阱与反模式">
-repo 路径：./repo/
-可用辅助脚本：
-  - python scripts/extract_api_surface.py <files...> --output <path>
-  - python scripts/find_related_issues.py repo/ --keywords "<关键词>" --output <path>
-
-产出一份自由格式的 Markdown 研究报告，写入 knowledge/<方向名>.md。
-目标：让从未接触过这个 repo 的 agent 读完后能像领域专家一样思考和决策。
-
-<返回协议>
-```
-
-工作目录：`workspace/`
-
-#### 步骤 4：审视与补研
-
-读取各 Researcher 的产出报告。对照研究目标（meta knowledge / meta method）审查：
-
-- 是否覆盖了核心概念和决策框架？
-- 是否有足够的陷阱和纠偏信息？
-- 是否过于偏向 API 细节而缺乏领域认知？
-
-如有缺口，spawn 定向补研 Researcher。
-
-#### 步骤 5：检查点
-
-更新状态：`research_done` → `true`，`phase` → `"generate"`。
-
-> ✅ 研究阶段完成。建议执行 `/compact` 压缩对话历史后继续。
-
----
-
-### 初始生成
-
-#### 生成 Skill
-
-读取 `agents/skill-writer.md`，spawn Skill Writer 子代理。
-
-子代理任务提示：
-
-```
-读取 knowledge/ 目录下的研究报告。
-设计 Skill 拆分方案，生成 Skill 文件到 skills/ 目录。
-遵循 Anthropic SKILL.md 标准。
-<返回协议>
-```
-
-工作目录：`workspace/`
-
-验证格式：
+对每个 `i ∈ 1..K` 创建独立的隔离环境：
 
 ```bash
-python scripts/validate_skill.py workspace/skills/<skill-name>
+python3 scripts/worktree_helper.py create --workspace workspace/ \
+    --purpose grader-iter<N>-g<i> \
+    --include "evals/results/iter-<N>" \
+    --exclude-guard "skills,state"
 ```
 
-保存快照：
+单独拷贝 `blinded-eval-results.json` 和 `eval-tasks.json` 到每个 grader work_path（**不要拷贝 blind-mapping.json**）。所有 K 个 Grader 看到**完全相同**的 blinded 数据；`tool_count_a_from_log` / `tool_count_b_from_log` 由你从 `subagent_log.py` 抽取后注入所有 K 份 prompt。
+
+**并行 spawn** K 个 Task（`subagent_type=grader`），每个指向各自 worktree。等所有 K 个 OSR 返回后聚合：
 
 ```bash
-cd workspace && git add -A && git commit -m "initial skills" && git tag skill-v0
+python3 scripts/aggregate_grades.py --workspace workspace/ --iter <N> \
+    --grader-dirs <g1_work>,<g2_work>,...,<gK_work>
+# → evals/results/iter-<N>/blind-grader-scores.json  (多数投票 + 中位数)
+# → evals/results/iter-<N>/ensemble-metrics.json     (一致性指标 + 分歧 task)
 ```
 
-#### 设计评估任务（与 Skill 隔离）
+之后像以前一样调用 `deblind_and_score.py`——接口不变。聚合脚本产生的 `ensemble-metrics.disagreement_tasks` 会被 `invariant_check.py --check grader_ensemble_agreement` 读取，分歧大的 task 自动进入 anomalies 而无需等 `skill_won_rate` 红线触发（见 §9）。
 
-**关键**：Eval Designer 不能看到 skills/ 目录。准备隔离环境：
+**为什么 ensemble**：单 grader 偏好稳定但分布偏移不可测；v1 的 `skill_won_rate > 90%` 红线只能事后触发。Ensemble 把"评判分歧"变成**可量化的 evidence-level 信号**，降低单评判者偏差、暴露量表使用差异、标记任务本身设计问题（若三人意见严重分裂，可能是 eval 本身 ambiguous）。
+
+**K 的选择**：默认 3（奇数便于破平票、成本可接受）。资源紧张时降 K=1 自动降级为旧行为。大 repo 争议多可升 K=5。
+
+### 5.3 Eval Designer（物理隔离）
 
 ```bash
-TMPDIR=$(mktemp -d)
-mkdir -p "$TMPDIR/knowledge"
-cp -r workspace/knowledge/* "$TMPDIR/knowledge/"
+python3 scripts/worktree_helper.py create --workspace workspace/ \
+    --purpose eval-designer-iter0 \
+    --include knowledge --exclude-guard skills,evals
 ```
 
-读取 `agents/eval-designer.md`，spawn Eval Designer 子代理。
+### 5.4 Researcher / Skill Writer
 
-子代理任务提示：
+Researcher 不需要隔离（它就是要读整个 repo）。Skill Writer 需要读 `knowledge/` 和当前 `skills/`（为改动它）——也不需要隔离。但它们的返回仍要走 OSR 协议。
+
+## 6. OSR 返回处理流程
+
+每次子代理返回后执行固定动作序列：
 
 ```
-读取 knowledge/ 目录下的研究报告。
-设计有区分度的评估任务，写入 eval-tasks.json。
-你无法访问任何 Skill 文件——这是故意的。
-<返回协议>
+1. osr_validate → 校验结构（hook 也会自动做一次，作为 backstop）
+2. if agent == skill_writer: overfit_check → 校验 knowledge_source_refs
+3. 提取结构化字段 → 驱动 next_action
+4. 扫描 open channels (surprises/anomalies/meta_observations) → §7
+5. append-event → 记录 osr_returned 或 osr_rejected
+6. 如果 rejected（osr_validate 或 overfit_check 失败）：
+   - 记录到 state/rejections/
+   - 带修正指令 re-spawn（最多重试 2 次）
 ```
 
-工作目录：`$TMPDIR`（隔离目录）
+**你只读 OSR 的结构化字段**。不读 feedback_file、suggestion_file、knowledge 文件的正文（除非进入 rich 模式的白名单点）。
 
-完成后：
+## 7. 开放通道响应策略
+
+schema 是信息**下界**不是上界。每个 OSR 都可能带 `surprises` / `anomalies` / `meta_observations` / `requested_schema_extension` / `extras`——这些字段承载"设计外高价值信息"。你必须处理：
+
+### surprises 生命周期
+
+每条 surprise 进入 `state.open_channels.pending_surprises`，状态 `pending → investigating → resolved | deferred`：
+
+- **pending**：刚收到，尚未评估
+- **investigating**：你已 spawn investigator 或下一个 agent 带上它做定向处理
+- **resolved**：发现已被处理（如下轮 Skill Writer 采纳）
+- **deferred**：明确选择推迟；记录原因
+
+每轮迭代前扫一遍 pending，年龄 ≥ 2 轮未处理的 → 要么 spawn `investigator` 子代理，要么标为 `deferred` 并记录。
+
+### anomalies 触发
+
+若 anomaly 指向具体证据（`evidence_path`），调用 `invariant_check.py`（§9）交叉验证。
+
+### meta_observations
+
+追加到 `state.open_channels.meta_observations_digest`（保留最近 3-5 条）。不立刻行动，但在人工 review 时展示。
+
+### schema_insufficient
+
+必须响应：
+- 如果扩展建议合理且小：接受，在 state 记录，下次该 agent 的 prompt 里注明新字段
+- 如果不合理：重 spawn，prompt 里加"原因：你的扩展建议 X，框架不接受因为 Y"
+
+### 空通道检测
+
+连续 N 轮（默认 3）某 agent 未填任何 surprises/anomalies/meta_observations → 触发 diagnostic spawn（让一个 investigator 审查近 N 次该 agent 的产出，判断是否漏报）。
+
+## 8. context_mode 自适应
+
+默认 `minimal`（200K budget）。你在白名单决策点可升级 `rich`（1M budget）读 L3 正文：
+
+| 决策点 | 什么时候读 L3 | 读什么 |
+|--------|--------------|--------|
+| **D1** Research 结束时 | 评估研究覆盖度 | `knowledge/*.md` 的 `section_headings`（不是正文；正文只在决定必须重构时读） |
+| **D2** Grader `skill_won_rate < 50%` 或 `> 90%` | 定位根因 | `feedback_file` 全文 |
+| **D3** Skill Writer 返回 `schema_insufficient` 或 overfit_check 拒绝 | 判断扩展是否合理 / 找替代 | `diff_against_prev_tag`、当前 `skills/*/SKILL.md` |
+| **D4** 连续 3 轮 \|Δcomposite\| < 0.02 | 判断是否重构 Skill | `skills/*/SKILL.md` + 弱任务的 `judgingCriteria` |
+
+升级流程：
+```bash
+python3 scripts/state_manager.py workspace/ set --key context_mode --value '"rich"'
+python3 scripts/state_manager.py workspace/ append-event \
+    --event-type context_mode_changed --summary "D2: skill_won_rate=92%, reading feedback"
+```
+
+`rich` 模式下你仍然**不得自己生成 knowledge / skills / grader-scores 内容**——读是允许的，写仍必须通过子代理。
+
+## 9. 护栏红线
+
+每轮 score 后运行：
 
 ```bash
-cp "$TMPDIR/eval-tasks.json" workspace/evals/eval-tasks.json
-rm -rf "$TMPDIR"
+python3 scripts/invariant_check.py --workspace workspace/ --all
 ```
 
-更新状态：`generation_done` → `true`，`phase` → `"iterate"`。
+该脚本返回 `guardrail_flags`，对应每项红线。以下任一触发即必须响应：
 
-> ✅ 初始生成完成。建议执行 `/compact` 压缩对话历史后继续。
+| 红线 | 含义 | 响应 |
+|------|------|------|
+| Eval Designer 看到 Skill | 术语泄漏 / isolation_env_path 含 skills | eval 作废；重新设计（隔离） |
+| Grader 知道身份 | OSR `blind_discipline_check.inferred_identity=true` | 本轮评判作废；重跑 |
+| composite 回归 > 0.05 | 某 task Δ < -0.05 | 回滚 `git checkout skill-v<N-1> -- skills/`；带"不得降 task-X"约束重写 |
+| 连续 3 轮 \|Δs\| < 0.02 | 收敛或停滞 | 如 composite 已超 0.6 判收敛；否则 Skill Writer 从头重构 |
+| tool_count 方差过低 | iter 间 toolUseCount 高度规整 | flag 为 critical，暂停 scoring，人工 review |
+| skill_won_rate > 90% | 可疑高 | 升级 rich 模式查 feedback；是否 eval 太易 |
+| 未响应 surprises ≥ 5 | 反馈积压 | spawn investigator |
+| `mean_winner_agreement < 0.5` | ensemble 强烈分歧 | 读 `ensemble-metrics.json` 进 anomalies；若 ≥ 半数 task 分裂则视作 eval ambiguity，spawn investigator 审 eval-tasks |
+| `disagreement_tasks` 单 task 跨 iter 持续出现 | 该 task 设计可能有缺陷 | 记录为 meta_observation，下轮考虑 eval-designer 改写该 task |
+| 子代理失败 | 2 次重试后仍 reject | 判定 failed；记录并推进 |
 
----
+## 10. Checkpoint 与恢复
 
-### 迭代循环
-
-每轮按 Run → Blind → Grade → Score → Improve 执行，直到收敛。
-
-进入迭代时，读取 [`references/eval-loop.md`](references/eval-loop.md) 了解完整流程。
-
-```
-Run    → 收集 Runner 输出到 eval-results.json
-Blind  → python scripts/blind_eval.py workspace/ <N>
-Grade  → spawn Grader 子代理读盲化数据、写评分
-Score  → python scripts/deblind_and_score.py workspace/ <N> [--cost <usd>]
-         → stdout 打印摘要，详情写入 iteration-summary.json
-Improve → 读 iteration-summary.json，spawn Skill Writer 改进
-```
-
-每轮结束更新 `orchestrator-state.json`（`iteration.current`、`iteration.scores` 追加新分数）。
-
-**退出条件**：stdout 显示 `converged=True` → 产出 / `reason=budget_exhausted` → 停止输出当前最优
-
-> ✅ 第 N 轮迭代完成（composite=X.XX）。建议执行 `/compact` 压缩对话历史后继续。
-
----
-
-### 产出
-
-更新状态：`phase` → `"done"`。
-
-收敛后，向用户报告：
-
-1. 最终 composite 得分和迭代历史
-2. 每个 Skill 的概要
-3. 建议的使用方式
-
-最终 Skill 文件位于 `workspace/skills/`，可直接复制到用户的技能目录使用。
-
-**发布到 Catalog**（可选，用户确认后执行）：
-
+每次 phase-transition 后：
 ```bash
-python scripts/register_skill.py workspace/ <source-repo-url>
-python scripts/generate_catalog.py
+python3 scripts/state_manager.py workspace/ snapshot --reason "phase-done"
+git -C workspace add -A && git commit -m "checkpoint: phase=<X>"
 ```
 
----
+每轮 Improve 后打 git tag：
+```bash
+git -C workspace tag skill-v<N>
+# PostToolUse hook 会自动 append snapshot_created 事件
+```
 
-### 质量红线
+**会话中断恢复**：下次启动时 `SessionStart` hook 自动调用 preflight。你读 preflight 输出的 `next_action_hint`，**不去读历史事件，不去回忆**。
 
-1. **Eval Designer 看到 Skill** → 整套 eval 作废，重新隔离生成
-2. **Grader 知道身份** → 本轮评判作废，重新盲化评判
-3. **composite 回归 > 0.05** → 回滚到上一版 skills，带约束重写
-4. **连续 3 轮无改善**（|Δs| < 0.02）→ 让 Skill Writer 从头重构，仍无效则判定收敛
-5. **子代理失败** → 最多重试 2 次
+如果 preflight 报 `fresh_init_needed`（如 state.json 损坏），运行 `state_migrate.py` 从 events.jsonl 重建或从上一个 skill-v<N> tag 回滚。
 
-评分公式：`composite = (quality/5)*0.6 + trajectory*0.4`，其中 `trajectory = max(0, 1 - toolCallsWith/toolCallsWithout)`。详见 [`references/eval-loop.md`](references/eval-loop.md)。
+## 11. 不得做的事（显式否定）
 
-### 辅助脚本
+1. **不得自己写 `knowledge/*.md`** — 只能 Researcher 写
+2. **不得自己写 `skills/*/SKILL.md`** — 只能 Skill Writer 写
+3. **不得自己写 `blind-grader-scores.json` / `osr-grader-digest.json`** — 由 Grader + `deblind_and_score.py` 写
+4. **不得自己填 `tool_count_*`** — 必须来自 `subagent_log.py` 抽取；null 也是合法值（记为 anomaly）
+5. **不得复制上一轮的 `eval-results.json` 作为本轮结果** — invariant_check 会检出（iter-N 与 iter-N+1 完全相同 → critical guardrail）
+6. **不得在 minimal 模式读 L3 正文** — 白名单决策点才允许升级
+7. **不得跳过 osr_validate** — hook 是 backstop，但你应该主动校验
+8. **不得忽略 surprises / schema_insufficient** — 必须进入生命周期追踪
+9. **不得在 eval task description 里用 Skill 术语** — isolation_runner term-leakage 会检出
+10. **不得用 `git commit --no-verify` / `--amend`** — 破坏审计链
+11. **不得删除 `.worktrees/` 或 `state/` 目录** — 恢复所需
 
-| 脚本 | 用途 | 调用方式 |
-|------|------|----------|
-| `scripts/repo_manifest.py` | 扫描 repo 结构事实 | `python scripts/repo_manifest.py <workspace>` |
-| `scripts/extract_api_surface.py` | 批量提取文件签名 | `python scripts/extract_api_surface.py <files...> --output <path>` |
-| `scripts/find_related_issues.py` | 获取 GitHub issues 摘要 | `python scripts/find_related_issues.py <repo-path> --output <path>` |
-| `scripts/blind_eval.py` | 盲化 eval 结果 | `python scripts/blind_eval.py <workspace> <iteration>` |
-| `scripts/deblind_and_score.py` | 反盲化 + 评分 + 收敛 | `python scripts/deblind_and_score.py <workspace> <iteration>` |
-| `scripts/convergence.py` | 收敛判定 + results.tsv | `python scripts/convergence.py <workspace> <score>` |
-| `scripts/validate_skill.py` | 验证 Skill 格式 | `python scripts/validate_skill.py <skill-dir>` |
-| `scripts/gen_viewer.py` | 生成 eval viewer HTML | `python scripts/gen_viewer.py <workspace>` |
-| `scripts/register_skill.py` | 注册 Skill 到 registry | `python scripts/register_skill.py <workspace> <repo-url>` |
-| `scripts/generate_catalog.py` | 从 registry 生成 catalog | `python scripts/generate_catalog.py` |
+## 12. Additional Resources
 
-## Additional Resources
+- [`references/eval-loop.md`](references/eval-loop.md) — Run/Blind/Grade/Score/Improve 全流程细节
+- [`agents/researcher.md`](agents/researcher.md) — Researcher 心智 + OSR 协议
+- [`agents/skill-writer.md`](agents/skill-writer.md) — Skill Writer 指南 + 反过拟合约束
+- [`agents/eval-designer.md`](agents/eval-designer.md) — 区分度原则 + 隔离协议
+- [`agents/grader.md`](agents/grader.md) — 盲法评判 + toolUseCount 来源约束
+- [`agents/investigator.md`](agents/investigator.md) — 诊断子代理（open channels 升级处理）
+- [`schemas/README.md`](schemas/README.md) — 所有 JSON Schema 的版本策略与演化机制
+- [`critique-report.json`](critique-report.json) — v1 系统性失效的 16 项诊断（为什么要 v2）
 
-- [Researcher 心智指南](agents/researcher.md) — 研究方向和思维方式
-- [Skill Writer 指南](agents/skill-writer.md) — Anthropic SKILL.md 标准、写作原则
-- [Eval Designer 指南](agents/eval-designer.md) — 评估任务设计、区分度原则
-- [Grader 指南](agents/grader.md) — 盲法评判流程
-- [迭代循环详情](references/eval-loop.md) — 对比评估、评分公式、收敛检查
-- [Catalog 元 Skill](catalog-skill/SKILL.md) — 已发布 Skill 的发现入口
+## 辅助脚本索引
+
+| 脚本 | 用途 |
+|------|------|
+| `scripts/preflight.py` | 启动 / 恢复前检查，返回 next_action_hint |
+| `scripts/state_manager.py` | 原子读写 state.json / iter-N / events.jsonl |
+| `scripts/osr_validate.py` | 所有 OSR 的 schema 校验（含语义不变量） |
+| `scripts/overfit_check.py` | Skill Writer changes_applied 的反过拟合校验 |
+| `scripts/invariant_check.py` | 聚合护栏检查（tool count 方差、skill_won_rate、空 channels 等） |
+| `scripts/worktree_helper.py` | 创建物理隔离工作目录 |
+| `scripts/isolation_runner.py` | 隔离环境的 preflight / verify-post / term-leakage |
+| `scripts/subagent_log.py` | 从 Claude Code session log 抽取子代理真实 tool count |
+| `scripts/blind_eval.py` | eval-results 随机化盲化（未变更） |
+| `scripts/aggregate_grades.py` | K 个 Grader 输出合并为单一 `blind-grader-scores.json`（多数投票 + 中位数 + 一致性指标） |
+| `scripts/deblind_and_score.py` | 反盲化 + composite + convergence + OSR digest |
+| `scripts/convergence.py` | ε-δ 收敛判定（由 state_manager 调用，无需直接使用） |
+| `scripts/repo_manifest.py` / `extract_api_surface.py` / `find_related_issues.py` | Researcher 工具 |
+| `scripts/validate_skill.py` | SKILL.md 格式校验（支持 --changes-file 串联 overfit_check） |
+| `scripts/state_migrate.py` | v1→v2 状态迁移 |
+| `scripts/register_skill.py` / `generate_catalog.py` | 发布链（未变更） |
