@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://skill-anything.local/schemas/iteration.schema.json",
+  "title": "Per-Iteration State",
+  "description": "state/iterations/iter-N.json. Holds the detailed record of a single iteration, loaded only when Orchestrator actively works in that iteration. Not required to stay tiny, but keep under ~10KB per file.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["iter", "started_at"],
+  "properties": {
+    "iter": { "type": "integer", "minimum": 1 },
+    "started_at": { "type": "string" },
+    "completed_at": { "type": "string" },
+    "skill_tag_before": { "type": "string" },
+    "skill_tag_after": { "type": "string" },
+    "runs": {
+      "type": "array",
+      "description": "One entry per eval task; each contains both variants (with/without Skill).",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["task_id", "with_skill", "without_skill"],
+        "properties": {
+          "task_id": { "type": "string" },
+          "with_skill": { "$ref": "#/$defs/RunVariant" },
+          "without_skill": { "$ref": "#/$defs/RunVariant" },
+          "tool_counts": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["with", "without", "source"],
+            "properties": {
+              "with": { "type": "integer", "minimum": 0 },
+              "without": { "type": "integer", "minimum": 0 },
+              "source": { "enum": ["subagent_log", "self_report"], "description": "subagent_log = authoritative, self_report = treated as anomaly-triggering fallback" }
+            }
+          }
+        }
+      }
+    },
+    "grader": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["osr_digest_path"],
+      "properties": {
+        "osr_digest_path": { "type": "string" },
+        "scores_file": { "type": "string" },
+        "skill_won_rate": { "type": "number", "minimum": 0, "maximum": 1 },
+        "scores_by_task": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "composite": { "type": "number" },
+              "quality": { "type": "number" }
+            }
+          }
+        }
+      }
+    },
+    "eval_designer_rerun": {
+      "type": "object",
+      "description": "Present only if eval tasks were regenerated mid-iteration (rare).",
+      "additionalProperties": true
+    },
+    "skill_writer": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "changes_applied_path": { "type": "string" },
+        "knowledge_refs_ok": { "type": "boolean" },
+        "commit_sha": { "type": "string" },
+        "removed_lines": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "snapshot_tag": { "type": "string" },
+    "composite_score": { "type": "number", "minimum": 0, "maximum": 1 },
+    "regressions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["task_id", "delta"],
+        "properties": {
+          "task_id": { "type": "string" },
+          "delta": { "type": "number" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "RunVariant": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["runner_return_path", "subagent_log_path"],
+      "properties": {
+        "runner_return_path": { "type": "string", "description": "Path to the OSR-validated Runner return JSON on disk." },
+        "subagent_log_path": { "type": "string", "description": "Path to the extracted subagent tool-use log (ground truth for tool_use_count)." },
+        "work_path": { "type": "string", "description": "Path to the physical worktree/tmpdir where this Runner executed." },
+        "status": { "enum": ["success", "partial", "failed"] },
+        "output_files": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

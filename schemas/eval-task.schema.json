@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://skill-anything.local/schemas/eval-task.schema.json",
+  "title": "Single Eval Task",
+  "description": "Schema for one entry in workspace/evals/eval-tasks.json. eval-tasks.json itself is a JSON array of these.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "description", "expectedBehavior", "judgingCriteria"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*$",
+      "description": "Lowercase kebab-case unique identifier."
+    },
+    "description": {
+      "type": "string",
+      "minLength": 20,
+      "description": "Realistic user-like task description. MUST NOT leak Skill-internal terminology (checked by skill_term_leakage_check)."
+    },
+    "expectedBehavior": {
+      "oneOf": [
+        { "type": "string", "minLength": 20 },
+        { "type": "array", "items": { "type": "string", "minLength": 10 }, "minItems": 1 }
+      ],
+      "description": "What a correctly-reasoning agent should do. Concrete and checkable."
+    },
+    "judgingCriteria": {
+      "type": "string",
+      "minLength": 20,
+      "description": "Grader's rubric for pass/fail and for distinguishing A from B."
+    },
+    "difficulty_hint": {
+      "enum": ["easy", "medium", "hard"],
+      "description": "Optional. Informs expected_gap in discrimination_predictions."
+    }
+  }
+}

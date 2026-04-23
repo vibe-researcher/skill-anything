@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://skill-anything.local/schemas/event.schema.json",
+  "title": "Events.jsonl Line",
+  "description": "Each line of workspace/state/events.jsonl is an independent JSON object validated against this schema. Append-only audit trail. Orchestrator needs only the LAST line to recover (Markov property).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["event_id", "ts", "phase", "event_type", "summary"],
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "minLength": 6,
+      "description": "Monotonically increasing or UUID. Unique within the workspace."
+    },
+    "ts": {
+      "type": "string",
+      "description": "ISO-8601 timestamp."
+    },
+    "phase": {
+      "enum": ["init", "research", "generate", "iterate", "done", "aborted"]
+    },
+    "iter": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Current iteration number; 0 before first iteration begins."
+    },
+    "agent": {
+      "type": "string",
+      "description": "Agent role associated with this event; empty for Orchestrator-level events."
+    },
+    "event_type": {
+      "enum": [
+        "task_spawned",
+        "osr_returned",
+        "osr_rejected",
+        "surprise_raised",
+        "anomaly_raised",
+        "meta_observation_raised",
+        "guardrail_tripped",
+        "phase_transition",
+        "snapshot_created",
+        "context_mode_changed",
+        "human_note",
+        "schema_insufficient_raised"
+      ]
+    },
+    "ref_path": {
+      "type": "string",
+      "description": "Optional pointer to the artifact relevant to this event (e.g. the OSR JSON file)."
+    },
+    "summary": {
+      "type": "string",
+      "maxLength": 120,
+      "description": "Short human-readable summary of the event."
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Optional structured data specific to the event_type. Kept small; big data goes to ref_path."
+    }
+  }
+}

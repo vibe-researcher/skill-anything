@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://skill-anything.local/schemas/osr-runner.schema.json",
+  "title": "OSR — Runner",
+  "description": "Return schema for a single Runner execution (with_skill or without_skill). Typical size 300-600 bytes. CRITICAL: tool_use_count_reported is self-reported and NOT authoritative. Orchestrator consumes tool counts only from subagent_log_path (extracted by subagent_log.py) — this roots out P03 (fabricated tool counts).",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "status",
+    "agent_type",
+    "agent_env",
+    "surprises",
+    "anomalies",
+    "meta_observations",
+    "run_id",
+    "variant",
+    "task_id",
+    "work_path",
+    "output_files",
+    "subagent_log_path"
+  ],
+  "properties": {
+    "status": { "enum": ["success", "partial", "failed", "schema_insufficient"] },
+    "agent_type": { "const": "runner" },
+    "agent_env": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cwd", "wall_time_s"],
+      "properties": {
+        "cwd": { "type": "string" },
+        "wall_time_s": { "type": "number", "minimum": 0 },
+        "tool_use_count_self_report": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "surprises": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["short", "suggested_action", "severity"],
+        "properties": {
+          "short": { "type": "string", "maxLength": 120 },
+          "suggested_action": { "type": "string", "maxLength": 200 },
+          "severity": { "enum": ["low", "medium", "high"] },
+          "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+        }
+      }
+    },
+    "anomalies": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["claim"],
+        "properties": {
+          "claim": { "type": "string", "maxLength": 200 },
+          "evidence_path": { "type": "string" }
+        }
+      }
+    },
+    "meta_observations": { "type": "array", "items": { "type": "string", "maxLength": 200 } },
+    "notes_path": { "type": "string" },
+    "notes_topic_tags": { "type": "array", "items": { "type": "string" }, "maxItems": 10 },
+    "requested_schema_extension": {
+      "type": "object",
+      "required": ["field_name", "field_type", "reason"],
+      "properties": {
+        "field_name": { "type": "string" },
+        "field_type": { "type": "string" },
+        "reason": { "type": "string", "maxLength": 500 }
+      }
+    },
+    "extras": { "type": "object" },
+
+    "run_id": { "type": "string", "description": "UUID for this run." },
+    "variant": {
+      "enum": ["with_skill", "without_skill"],
+      "description": "Whether this Runner had access to skills/."
+    },
+    "task_id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+    "work_path": {
+      "type": "string",
+      "description": "Absolute path to the worktree where this Runner executed. MUST be distinct per-run and isolated from other Runners."
+    },
+    "output_files": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "description": "Paths (relative to work_path or absolute) of artifacts produced. At minimum the run answer text."
+    },
+    "subagent_log_path": {
+      "type": "string",
+      "description": "Path to the authoritative tool-use log extracted by subagent_log.py from ~/.claude/projects/.../session-*.jsonl. Filled by PostToolUse hook — Runner itself never writes this."
+    },
+    "files_read": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Files actually read during this run. For variant=without_skill, MUST NOT contain paths under skills/. For variant=with_skill, should contain at least one skills/ path."
+    },
+    "time_elapsed_sec": { "type": "number", "minimum": 0 },
+    "task_completion": {
+      "enum": ["complete", "partial", "failed"],
+      "description": "Runner's self-assessment of whether it fully answered the task."
+    }
+  }
+}

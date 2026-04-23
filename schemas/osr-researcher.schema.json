@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://skill-anything.local/schemas/osr-researcher.schema.json",
+  "title": "OSR — Researcher",
+  "description": "Return schema for Researcher sub-agents. Typical size 500-1500 bytes. Does NOT contain narrative summaries; those live in the knowledge files themselves.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "status",
+    "agent_type",
+    "agent_env",
+    "surprises",
+    "anomalies",
+    "meta_observations",
+    "knowledge_files",
+    "research_direction",
+    "confidence"
+  ],
+  "properties": {
+    "status": { "enum": ["success", "partial", "failed", "schema_insufficient"] },
+    "agent_type": { "const": "researcher" },
+    "agent_env": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cwd", "wall_time_s"],
+      "properties": {
+        "cwd": { "type": "string" },
+        "wall_time_s": { "type": "number", "minimum": 0 },
+        "tool_use_count_self_report": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "surprises": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["short", "suggested_action", "severity"],
+        "properties": {
+          "short": { "type": "string", "maxLength": 120 },
+          "suggested_action": { "type": "string", "maxLength": 200 },
+          "severity": { "enum": ["low", "medium", "high"] },
+          "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+        }
+      }
+    },
+    "anomalies": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["claim"],
+        "properties": {
+          "claim": { "type": "string", "maxLength": 200 },
+          "evidence_path": { "type": "string" }
+        }
+      }
+    },
+    "meta_observations": {
+      "type": "array",
+      "items": { "type": "string", "maxLength": 200 }
+    },
+    "notes_path": { "type": "string" },
+    "notes_topic_tags": { "type": "array", "items": { "type": "string" }, "maxItems": 10 },
+    "requested_schema_extension": {
+      "type": "object",
+      "required": ["field_name", "field_type", "reason"],
+      "properties": {
+        "field_name": { "type": "string" },
+        "field_type": { "type": "string" },
+        "reason": { "type": "string", "maxLength": 500 }
+      }
+    },
+    "extras": { "type": "object" },
+
+    "knowledge_files": {
+      "type": "array",
+      "description": "One entry per knowledge/*.md file written by this Researcher.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "topic", "lines"],
+        "properties": {
+          "path": { "type": "string", "description": "Relative to workspace/." },
+          "topic": { "type": "string", "description": "Single-phrase topic label (e.g., 'grader-architecture')." },
+          "lines": { "type": "integer", "minimum": 1 },
+          "est_tokens": { "type": "integer", "minimum": 0 },
+          "primary_claims_count": { "type": "integer", "minimum": 0 },
+          "section_headings": { "type": "array", "items": { "type": "string" }, "description": "Top-level markdown headings; lets Orchestrator pick relevant file in rich mode without reading the whole file." }
+        }
+      }
+    },
+    "research_direction": {
+      "type": "string",
+      "description": "The direction assigned when this Researcher was spawned.",
+      "maxLength": 200
+    },
+    "gaps_identified": {
+      "type": "array",
+      "description": "Topics the Researcher noticed are missing or only half-covered. Orchestrator uses these to decide whether to spawn supplementary Researchers.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["short"],
+        "properties": {
+          "short": { "type": "string", "maxLength": 120 },
+          "priority": { "enum": ["low", "medium", "high"] }
+        }
+      }
+    },
+    "confidence": {
+      "enum": ["low", "medium", "high"],
+      "description": "Researcher's self-assessment of coverage completeness for its direction."
+    }
+  }
+}

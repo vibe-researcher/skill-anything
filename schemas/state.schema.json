@@ -1,0 +1,140 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://skill-anything.local/schemas/state.schema.json",
+  "title": "Skill-Anything Main State",
+  "description": "The top-level state.json that persists across Orchestrator sessions. Must stay compact (~<4KB) because it is always loaded into Orchestrator context (L1).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "session_id",
+    "repo_url",
+    "phase",
+    "context_mode",
+    "current_iteration",
+    "research_done",
+    "generation_done",
+    "scores_history",
+    "open_channels",
+    "guardrail_flags"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "2.0.0",
+      "description": "Semantic version of this state schema. Bumped when schema breaks backward compatibility."
+    },
+    "session_id": {
+      "type": "string",
+      "minLength": 8,
+      "description": "UUID of the current Orchestrator process. A new session_id on restart signals potential context compression or restart."
+    },
+    "repo_url": {
+      "type": "string",
+      "description": "URL or local path of the target repo being distilled."
+    },
+    "phase": {
+      "enum": ["init", "research", "generate", "iterate", "done", "aborted"],
+      "description": "Coarse state-machine phase. Drives which next_action is legal."
+    },
+    "context_mode": {
+      "enum": ["minimal", "rich"],
+      "description": "minimal = 200K budget, only L1 + OSR digests. rich = 1M budget, allowed to read L3 at whitelisted decision points."
+    },
+    "current_iteration": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Iteration counter, starts at 0 before first iter."
+    },
+    "last_event_id": {
+      "type": "string",
+      "description": "Pointer to the most recent entry in state/events.jsonl. Orchestrator reads that event on restart."
+    },
+    "last_checkpoint_at": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}",
+      "description": "ISO-8601 timestamp of the last snapshot."
+    },
+    "research_done": { "type": "boolean" },
+    "generation_done": { "type": "boolean" },
+    "scores_history": {
+      "type": "array",
+      "description": "Numeric history only. Full per-task scores live in state/iterations/iter-N.json.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["iter", "composite"],
+        "properties": {
+          "iter": { "type": "integer", "minimum": 1 },
+          "composite": { "type": "number", "minimum": 0, "maximum": 1 },
+          "delta": { "type": "number" },
+          "cost_usd": { "type": "number", "minimum": 0 }
+        }
+      }
+    },
+    "open_channels": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pending_surprises", "anomalies_count_by_type", "meta_observations_digest"],
+      "properties": {
+        "pending_surprises": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "from_agent", "iter", "short_signal", "status", "age"],
+            "properties": {
+              "id": { "type": "string" },
+              "from_agent": { "type": "string" },
+              "iter": { "type": "integer" },
+              "short_signal": { "type": "string", "maxLength": 120 },
+              "suggested_action": { "type": "string", "maxLength": 200 },
+              "severity": { "enum": ["low", "medium", "high"] },
+              "status": { "enum": ["pending", "investigating", "resolved", "deferred"] },
+              "age": { "type": "integer", "minimum": 0, "description": "Number of iterations this surprise has been open." },
+              "detail_path": { "type": "string", "description": "Optional pointer to state/surprises/<id>.json if longer detail needed." }
+            }
+          }
+        },
+        "anomalies_count_by_type": {
+          "type": "object",
+          "additionalProperties": { "type": "integer", "minimum": 0 },
+          "description": "Rolling counts of anomaly categories across iterations. Example: {tool_count_variance_low: 3, skill_won_rate_high: 2}."
+        },
+        "meta_observations_digest": {
+          "type": "array",
+          "maxItems": 5,
+          "items": { "type": "string", "maxLength": 200 },
+          "description": "The N most recent short meta observations, trimmed to stay compact."
+        }
+      }
+    },
+    "guardrail_flags": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "severity", "since_iter"],
+        "properties": {
+          "name": { "type": "string" },
+          "severity": { "enum": ["info", "warn", "critical"] },
+          "since_iter": { "type": "integer" },
+          "evidence_ref": { "type": "string" }
+        }
+      }
+    },
+    "next_action_hint": {
+      "type": "string",
+      "maxLength": 256,
+      "description": "Human/agent-readable hint about what the Orchestrator should do next on restart. Stored verbatim from the last event handler."
+    },
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "total_cost_usd": { "type": "number", "minimum": 0 },
+        "max_cost_usd": { "type": "number", "minimum": 0 },
+        "total_tokens_orchestrator": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

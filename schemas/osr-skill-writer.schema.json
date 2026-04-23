@@ -1,0 +1,158 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://skill-anything.local/schemas/osr-skill-writer.schema.json",
+  "title": "OSR — Skill Writer",
+  "description": "Return schema for Skill Writer sub-agents. Typical size 1-3 KB. CRITICAL: every change in changes_applied must carry knowledge_source_refs pointing to specific lines in knowledge/*.md — this is the anti-overfitting contract. Empty knowledge_source_refs causes overfit_check.py to reject the change. A Skill Writer may produce an Anthropic-spec-compliant skill bundle (SKILL.md + optional references/*.md + scripts/*.py + PROVENANCE.yaml); list each file in skill_files and optionally summarize the bundle layout in skill_bundles.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "status",
+    "agent_type",
+    "agent_env",
+    "surprises",
+    "anomalies",
+    "meta_observations",
+    "skill_files",
+    "changes_applied",
+    "removed_lines"
+  ],
+  "properties": {
+    "status": { "enum": ["success", "partial", "failed", "schema_insufficient"] },
+    "agent_type": { "const": "skill_writer" },
+    "agent_env": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cwd", "wall_time_s"],
+      "properties": {
+        "cwd": { "type": "string" },
+        "wall_time_s": { "type": "number", "minimum": 0 },
+        "tool_use_count_self_report": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "surprises": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["short", "suggested_action", "severity"],
+        "properties": {
+          "short": { "type": "string", "maxLength": 120 },
+          "suggested_action": { "type": "string", "maxLength": 200 },
+          "severity": { "enum": ["low", "medium", "high"] },
+          "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+        }
+      }
+    },
+    "anomalies": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["claim"],
+        "properties": {
+          "claim": { "type": "string", "maxLength": 200 },
+          "evidence_path": { "type": "string" }
+        }
+      }
+    },
+    "meta_observations": {
+      "type": "array",
+      "items": { "type": "string", "maxLength": 200 }
+    },
+    "notes_path": { "type": "string" },
+    "notes_topic_tags": { "type": "array", "items": { "type": "string" }, "maxItems": 10 },
+    "requested_schema_extension": {
+      "type": "object",
+      "required": ["field_name", "field_type", "reason"],
+      "properties": {
+        "field_name": { "type": "string" },
+        "field_type": { "type": "string" },
+        "reason": { "type": "string", "maxLength": 500 }
+      }
+    },
+    "extras": { "type": "object" },
+
+    "skill_files": {
+      "type": "array",
+      "description": "One entry per file produced in any skill bundle — the main SKILL.md, any references/*.md, any scripts/*, PROVENANCE.yaml, or other bundle assets. Use kind to disambiguate; section_headings is only meaningful for markdown files.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "lines"],
+        "properties": {
+          "path": { "type": "string", "description": "Bundle-relative or workspace-relative path, e.g. skills/<name>/SKILL.md or skills/<name>/references/<topic>.md." },
+          "kind": { "enum": ["skill_main", "reference", "script", "asset", "provenance"], "description": "Optional. Defaults to skill_main when filename is SKILL.md, reference under references/, script under scripts/, asset under assets/, provenance for PROVENANCE.yaml." },
+          "lines": { "type": "integer", "minimum": 1 },
+          "section_headings": { "type": "array", "items": { "type": "string" }, "description": "Markdown H1/H2 headings; only meaningful for .md files." },
+          "sha256": { "type": "string" },
+          "line_delta_vs_prev": { "type": "integer", "description": "Signed delta of line count vs previous skill tag." }
+        }
+      }
+    },
+    "skill_bundles": {
+      "type": "array",
+      "description": "Optional bundle-level summary for multi-file skills. Each entry groups files under one skill directory. Orchestrator uses this to locate the main SKILL.md and decide what to publish via register_skill.py.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["skill_dir", "main"],
+        "properties": {
+          "skill_dir": { "type": "string", "description": "Directory relative to workspace root, e.g. skills/openjudge-grader-selection." },
+          "main": { "type": "string", "description": "Path to the main SKILL.md, relative to skill_dir, i.e. \"SKILL.md\"." },
+          "references": { "type": "array", "items": { "type": "string" }, "description": "Paths relative to skill_dir, e.g. references/rubric-patterns.md." },
+          "scripts": { "type": "array", "items": { "type": "string" } },
+          "assets": { "type": "array", "items": { "type": "string" } },
+          "provenance": { "type": "string", "description": "Optional relative path, usually PROVENANCE.yaml." }
+        }
+      }
+    },
+    "index_file": { "type": "string", "description": "Path to skills/index/SKILL.md if multi-skill output." },
+    "changes_applied": {
+      "type": "array",
+      "description": "Itemized list of changes made in this iteration. Hard gate: every add/modify MUST have non-empty knowledge_source_refs.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["change_id", "type", "target_file", "rationale_short", "knowledge_source_refs"],
+        "properties": {
+          "change_id": { "type": "string" },
+          "type": { "enum": ["add", "modify", "delete"] },
+          "target_file": { "type": "string" },
+          "target_section": { "type": "string" },
+          "rationale_short": {
+            "type": "string",
+            "maxLength": 200,
+            "description": "WHY this change. overfit_check.py flags this field if it contains literal eval task ids."
+          },
+          "knowledge_source_refs": {
+            "type": "array",
+            "description": "Lines in knowledge/*.md that justify this change. MUST NOT be empty for type=add|modify. Empty array allowed only for type=delete.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["path", "line_from", "line_to"],
+              "properties": {
+                "path": { "type": "string" },
+                "line_from": { "type": "integer", "minimum": 1 },
+                "line_to": { "type": "integer", "minimum": 1 },
+                "excerpt_hash": { "type": "string", "description": "Optional: sha256 of the cited text for later integrity check." }
+              }
+            }
+          }
+        }
+      }
+    },
+    "removed_lines": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Total lines removed from all Skill files this iteration. Skill Writer is expected to actively remove stale content (simplicity principle)."
+    },
+    "diff_against_prev_tag": {
+      "type": "string",
+      "description": "Optional path to a diff file vs the previous skill-v<N> tag, produced by git."
+    },
+    "generalization_notes": {
+      "type": "array",
+      "items": { "type": "string", "maxLength": 200 },
+      "description": "Self-reported evidence that changes are generalizable, not patches for specific eval tasks."
+    }
+  }
+}

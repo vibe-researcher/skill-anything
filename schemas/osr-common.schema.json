@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://skill-anything.local/schemas/osr-common.schema.json",
+  "title": "Open-Structured Return — Common Fields",
+  "description": "Reference documentation for fields shared by every OSR (Researcher, Skill Writer, Eval Designer, Runner, Grader, Investigator). This file is NOT used directly by the validator; each osr-<agent>.schema.json inlines these fields so the validator can be implemented without $ref resolution. Changes here MUST be propagated by hand.",
+  "type": "object",
+  "$comment": "The fields below describe the minimum OSR contract. Agent-specific schemas extend with additional required fields, and both tolerate extras (additionalProperties: true) as open-world escape hatch.",
+  "properties": {
+    "status": {
+      "enum": ["success", "partial", "failed", "schema_insufficient"],
+      "description": "success = work done + OSR complete. partial = work done but some fields omitted. failed = work NOT done. schema_insufficient = work done but schema cannot represent key findings; MUST accompany requested_schema_extension."
+    },
+    "agent_type": {
+      "enum": ["researcher", "skill_writer", "eval_designer", "runner", "grader", "investigator"],
+      "description": "Identifies which OSR schema to use. Hook uses this to pick the right validator."
+    },
+    "agent_env": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cwd", "wall_time_s"],
+      "properties": {
+        "cwd": { "type": "string", "description": "Working directory the agent ran in. Must be an isolated path for worktree/tmpdir isolation checks." },
+        "wall_time_s": { "type": "number", "minimum": 0 },
+        "tool_use_count_self_report": { "type": "integer", "minimum": 0, "description": "Agent's best-effort self-report. NOT authoritative — authoritative counts come from subagent_log.py." }
+      }
+    },
+    "surprises": {
+      "type": "array",
+      "description": "Short signals about things the agent found worth flagging that aren't in the required fields. Keep 0-5 items. Each must include a suggested_action so the Orchestrator can decide without reading prose.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["short", "suggested_action", "severity"],
+        "properties": {
+          "short": { "type": "string", "maxLength": 120 },
+          "suggested_action": { "type": "string", "maxLength": 200 },
+          "severity": { "enum": ["low", "medium", "high"] },
+          "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+        }
+      }
+    },
+    "anomalies": {
+      "type": "array",
+      "description": "Factual observations of things that contradict expectations. Typically triggered by the hook system (e.g., tool_count_self_report != tool_count_from_log).",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["claim"],
+        "properties": {
+          "claim": { "type": "string", "maxLength": 200 },
+          "evidence_path": { "type": "string" }
+        }
+      }
+    },
+    "meta_observations": {
+      "type": "array",
+      "description": "Feedback about the distillation workflow itself (not about the repo being distilled). Used to evolve the process.",
+      "items": { "type": "string", "maxLength": 200 }
+    },
+    "notes_path": {
+      "type": "string",
+      "description": "Optional path to a free-form Markdown file in workspace/notes/. Used for long observations that don't fit the structured fields. Orchestrator reads this only in rich context_mode or when following up on a surprise."
+    },
+    "notes_topic_tags": {
+      "type": "array",
+      "items": { "type": "string" },
+      "maxItems": 10,
+      "description": "Short tags describing what's in notes_path, so Orchestrator can decide whether to open it."
+    },
+    "requested_schema_extension": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["field_name", "field_type", "reason"],
+      "properties": {
+        "field_name": { "type": "string" },
+        "field_type": { "type": "string", "description": "Plain-English type description." },
+        "reason": { "type": "string", "maxLength": 500 }
+      },
+      "description": "REQUIRED when status == schema_insufficient. Agent proposes a schema extension."
+    },
+    "extras": {
+      "type": "object",
+      "description": "Open-world pocket for fields not yet formalized. Orchestrator preserves but does not semantically consume these; they feed schema evolution meta-analysis."
+    }
+  }
+}

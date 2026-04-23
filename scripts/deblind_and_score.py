@@ -2,7 +2,15 @@
 """De-blind grader scores, compute composite, check convergence.
 
 Reads blind-grader-scores.json + blind-mapping.json + eval-results.json.
-Writes grader-scores.json + iteration-summary.json.
+Writes:
+    * grader-scores.json (full long-form detail, back-compat)
+    * iteration-summary.json (compact human-readable summary)
+    * osr-grader-digest.json (v2: schema-validated subset for Orchestrator)
+
+Also (v2) appends a 'snapshot_created' event to state/events.jsonl so the
+Orchestrator knows scoring completed and can read the digest without
+searching.
+
 Calls convergence.py internally.
 
 Usage:
@@ -179,6 +187,81 @@ def main():
     (results_dir / "iteration-summary.json").write_text(
         json.dumps(summary, indent=2, ensure_ascii=False))
 
+    # --- v2: OSR Grader Digest (compact, schema-validated subset) ---
+    # This is what the Orchestrator consumes without reading the full grader-
+    # scores.json; references long text by path so L3 content never enters L1.
+    digest = {
+        "iteration": iteration,
+        "composite_score": avg_composite,
+        "converged": converged,
+        "convergence_reason": reason,
+        "scores_file": str(results_dir / "grader-scores.json"),
+        "per_task": [
+            {
+                "task_id": s["taskId"],
+                "composite": s["composite"],
+                "quality": s["quality"],
+                "winner": s["blindComparison"]["winner"],
+                "skill_won": s["blindComparison"]["skillWon"],
+                "tool_count_with": s["trajectoryEfficiency"]["toolCallsWith"],
+                "tool_count_without": s["trajectoryEfficiency"]["toolCallsWithout"],
+                "feedback_ref": {
+                    "file": str(results_dir / "grader-scores.json"),
+                    "task_id": s["taskId"],
+                },
+            }
+            for s in grader_scores
+        ],
+        "aggregate": {
+            "winner_dist": {
+                "A": sum(1 for s in grader_scores
+                         if s["blindComparison"]["winner"] == "A"),
+                "B": sum(1 for s in grader_scores
+                         if s["blindComparison"]["winner"] == "B"),
+                "TIE": sum(1 for s in grader_scores
+                           if s["blindComparison"]["winner"] == "TIE"),
+            },
+            "skill_won_rate": round(
+                sum(1 for s in grader_scores
+                    if s["blindComparison"]["skillWon"] == "yes")
+                / max(1, len(grader_scores)), 3),
+            "quality_range": [
+                min((s["quality"] for s in grader_scores), default=0),
+                max((s["quality"] for s in grader_scores), default=0),
+            ],
+        },
+        "regressions": regressions,
+        "weakest_tasks": [t["taskId"] for t in weakest],
+    }
+    digest_path = results_dir / "osr-grader-digest.json"
+    digest_path.write_text(json.dumps(digest, indent=2, ensure_ascii=False))
+
+    # --- v2: Append event to state/events.jsonl (non-blocking) ---
+    state_mgr = Path(__file__).parent / "state_manager.py"
+    if (workspace / "state.json").exists() and state_mgr.exists():
+        summary_text = (f"iter-{iteration} composite={avg_composite} "
+                        f"reason={reason}")[:120]
+        try:
+            subprocess.run(
+                [sys.executable, str(state_mgr), str(workspace),
+                 "append-event",
+                 "--event-type", "snapshot_created",
+                 "--iter", str(iteration),
+                 "--ref", str(digest_path),
+                 "--summary", summary_text],
+                capture_output=True, timeout=10,
+            )
+            # Also register the composite into scores_history for Markov recovery
+            subprocess.run(
+                [sys.executable, str(state_mgr), str(workspace),
+                 "append-score",
+                 "--iter", str(iteration),
+                 "--composite", str(avg_composite)],
+                capture_output=True, timeout=10,
+            )
+        except Exception:
+            pass  # scoring completes even if state infra is absent
+
     # --- Compact stdout for Orchestrator ---
     print(f"composite={avg_composite} converged={converged} reason={reason}")
     if regressions:
@@ -187,6 +270,7 @@ def main():
     weak_ids = ", ".join(t["taskId"] for t in weakest)
     print(f"weakest: {weak_ids}")
     print(f"details: {results_dir / 'iteration-summary.json'}")
+    print(f"osr_digest: {digest_path}")
 
 
 if __name__ == "__main__":
