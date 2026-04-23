@@ -1,9 +1,45 @@
 {
   "meta": {
     "repo": "https://github.com/vibe-researcher/skill-anything",
-    "description": "Published Skills distilled from GitHub repos by skill-anything",
+    "description": "Agent Skills distilled from GitHub repos by skill-anything. Each bundle ships with a reproducible blind-eval audit trail.",
     "catalog_url": "https://vibe-researcher.github.io/skill-anything/SKILL.txt",
-    "updated": ""
+    "updated": "2026-04-24"
   },
-  "skills": []
+  "skills": [
+    {
+      "name": "openjudge",
+      "description": "OpenJudge (py-openjudge) — LLM-as-judge evaluation framework: grader selection, score-scale normalization, rubric workflows, agent trajectory evaluation.",
+      "status": "beta",
+      "score": 0.9167,
+      "score_caveat": "iter-2 best (kept); iter-3 regressed to 0.7792 (discarded). Single-grader run (K=1), trajectory signal unavailable. See eval-manifest.json -> honest_caveats.",
+      "skill_count": 4,
+      "source_repo": "https://github.com/agentscope-ai/OpenJudge",
+      "iterations": 2,
+      "published_at": "2026-04-24",
+      "eval_manifest": "published/openjudge-receipts/eval-manifest.json",
+      "why_still_publish": "Skill passes validate_skill.py, wins 12/12 tasks on quality against the no-Skill baseline (iter-2, quality-only), and the audit trail is public. Beta = the quality signal is real; the cost/trajectory telemetry is not yet.",
+      "skills": [
+        {
+          "name": "openjudge-index",
+          "path": "published/openjudge-index/",
+          "description": "Routing + debiasing (rm-gallery -> py-openjudge, Reward -> Grader). Read this first."
+        },
+        {
+          "name": "openjudge-grader-selection",
+          "path": "published/openjudge-grader-selection/",
+          "description": "Decision tree: LLMGrader vs FunctionGrader vs AgenticGrader; score-scale map (1-3 vs 1-5 vs binary); structured_model traps."
+        },
+        {
+          "name": "openjudge-rubric-workflow",
+          "path": "published/openjudge-rubric-workflow/",
+          "description": "Three-path rubric generation; GradingRunner batch eval; IterativeRubricsGenerator silent-empty-rubric gotcha."
+        },
+        {
+          "name": "openjudge-agent-eval",
+          "path": "published/openjudge-agent-eval/",
+          "description": "TrajectoryGrader (1-3) vs ToolCallAccuracyGrader (1-5) with explicit normalization formulas. AgenticGrader v0.2.0 pre-built agent requirement."
+        }
+      ]
+    }
+  ]
 }
