@@ -2,15 +2,71 @@
 
 **中文版 | [English](README.md)**
 
-> 通过自主研究、生成与盲法评估，将任意 GitHub 仓库蒸馏为高质量 Agent Skill。
+> **Agent 技能编译器**：丢一个 GitHub 仓库链接进去，拿回一套能让 Agent 像领域专家一样工作的 Skill 文件。
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
 [![Platform](https://img.shields.io/badge/platform-Claude%20Code%20%7C%20Cursor%20%7C%20任意%20Agent-lightgrey)]()
+[![Status: beta](https://img.shields.io/badge/status-beta-orange)]()
+
+> 📢 **2026-04-24 更新**：本中文版处于渐进翻译中。下方"立即试用"与"可信凭据"两节已同步英文主版，其余段落保留历史版本，以英文版为准。
 
 ---
 
-## 这是什么？
+## 你能拿到什么
+
+- **Skill，不是 wrapper。** 输出是 [Anthropic 标准 `SKILL.md`](https://docs.anthropic.com/en/docs/claude-code/skills) 组件——可在 Claude Code、Cursor 以及 27+ 个 Agent 平台直接使用。无运行时、无 SDK。
+- **带审计链的打分。** 每个发布的 Skill 附带一份盲法 A/B 评测 manifest：评委分数、盲法映射、诚实的 caveat。第三方可以重放整个评测。
+- **对失败保持诚实。** 我们 v1 的循环曾自己作弊——我们把 [复盘分析](docs/why-v2.md) 和 [原始 16 条问题 critique](critique-report.json) 一起放在了仓库里。
+
+这个工具位于 Agent 栈里"prompt 模板"和"完整框架"之间：**被编译好的领域知识，按需加载**。
+
+---
+
+## 立即试用
+
+仓库里已经发布了 [OpenJudge](https://github.com/agentscope-ai/OpenJudge)（LLM-as-judge 评测框架）的 Skill。一行命令装到你的 Claude Code：
+
+```bash
+git clone https://github.com/vibe-researcher/skill-anything
+cd skill-anything
+python3 scripts/register_skill.py \
+  published/openjudge-{index,grader-selection,rubric-workflow,agent-eval} \
+  --to user
+```
+
+装完后你的 Agent 就获得了四个新 Skill：选 OpenJudge grader、量程归一化、rubric 工作流、agent trajectory 评测。问它"factual-QA 任务该用哪个 grader？"，答案会肉眼可见地变好。
+
+不是 bash？`cp -r published/openjudge-{index,grader-selection,rubric-workflow,agent-eval} ~/.claude/skills/` 同样生效。
+
+---
+
+## 可信凭据（Receipts）— "打过分"到底意味着什么
+
+大多数同类项目只声称"质量好"；我们更愿意把审计链公开。
+
+**OpenJudge 蒸馏 iter-2（已采纳），2026-04-23：**
+
+| 指标 | 值 | 说明 |
+|---|---|---|
+| 综合评分 | **0.9167** | quality 0.6 + trajectory 0.4。本次 trajectory 信号不可用，实际为质量单维 |
+| skill-won 比例 | 12/12 任务 | vs 无 Skill baseline |
+| 收敛状态 | ✅ | iter-1 → iter-2 的 Δ < 0.03 |
+| iter-3 | 0.7792（丢弃） | 回归——以 `status: beta` 发布 |
+| Grader 集成 | K=1 | 为控成本；推荐默认为 K=3 |
+| 未解决的 surprise | 8 条 | 见 [lessons-learned](docs/lessons-learned-openjudge-2026-04-23.md) |
+
+原始产物：[`published/openjudge-receipts/`](published/openjudge-receipts/) —— 每轮 summary、评委分数、盲法映射、OSR digest、文件 SHA-256 hash。完整的 [`eval-manifest.json`](published/openjudge-receipts/eval-manifest.json) 描述了如何复现这次运行。
+
+**我们为什么认为这件事重要：** 在这个领域，"Agent 给 Agent 打分"正在成为默认模式，而静默失败与成功看起来一模一样。唯一诚实的回应是把凭据公开——完整故事见 [`docs/why-v2.md`](docs/why-v2.md)，讲述了我们 v1 循环是如何自己欺骗自己的评测的。
+
+---
+
+> ⬇️ 以下为中文版历史内容，正逐步被英文主版覆盖替代。
+
+---
+
+## 这是什么？（历史文本）
 
 `skill-anything` 是一个**自主知识蒸馏系统**。输入一个 GitHub 仓库 URL，输出一套 [Agent Skill 文件](https://docs.anthropic.com/en/docs/claude-code/skills)——让任何基于 Claude 的 Agent 无需阅读源码，就能对该仓库的领域知识进行准确推理。
 
