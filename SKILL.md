@@ -221,7 +221,9 @@ python3 scripts/invariant_check.py --workspace workspace/ --all
 |------|------|------|
 | Eval Designer 看到 Skill | 术语泄漏 / isolation_env_path 含 skills | eval 作废；重新设计（隔离） |
 | Grader 知道身份 | OSR `blind_discipline_check.inferred_identity=true` | 本轮评判作废；重跑 |
-| composite 回归 > 0.05 | 某 task Δ < -0.05 | 回滚 `git checkout skill-v<N-1> -- skills/`；带"不得降 task-X"约束重写 |
+| **quality** 回归 > 0.05 | 某 task quality_delta < -0.05（见 `iteration-summary.quality_regressions` 或 digest.rollback_recommendation=="quality_regressed"） | 回滚 `git checkout skill-v<N-1> -- skills/`；带"不得降 task-X"约束重写 |
+| composite 回归 > 0.05 但 quality **未**回归 | `rollback_recommendation=="trajectory_regression_observed_do_not_rollback"`——trajectory 噪声导致的伪回归 | append `trajectory_regression_observed` event，**不回滚**；下轮关注 Super-Runner 是否需要切 per-task 模式 |
+| `trajectory_degraded=true` | deblind 检测到所有 task 的 tool count 对完全相同 → Super-Runner 聚合，trajectory 信号不可用 | composite 自动降级为 quality-only（公式内处理）；prompt 未来 Runner 考虑 per-task 独立 spawn |
 | 连续 3 轮 \|Δs\| < 0.02 | 收敛或停滞 | 如 composite 已超 0.6 判收敛；否则 Skill Writer 从头重构 |
 | tool_count 方差过低 | iter 间 toolUseCount 高度规整 | flag 为 critical，暂停 scoring，人工 review |
 | skill_won_rate > 90% | 可疑高 | 升级 rich 模式查 feedback；是否 eval 太易 |
