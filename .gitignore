@@ -1,6 +1,12 @@
 # Workspace (runtime state, generated artifacts)
 workspace/
 
+# Archived/deprecated workspaces (historical iteration data, not for distribution)
+workspace-deprecated-*/
+
+# Redesign scratch (not for distribution)
+.redesign-proposal.md
+
 # Node.js (no longer used, but ignore if leftover)
 node_modules/
 
