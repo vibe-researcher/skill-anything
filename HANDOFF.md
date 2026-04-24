@@ -100,10 +100,17 @@ Before anything else:
 - [ ] Decide whether `workspace-deprecated-*/` get `rm -rf`'d or kept as historical archives on your disk. They're .gitignored either way.
 - [ ] Review `docs/launch.md` — this is the only opinionated file. If the tweet draft or HN title feels off, rewrite before any launch attempt.
 
-## Pre-launch blockers (noted but not solved tonight)
+## Pre-launch blockers
 
-- **GitHub Pages not confirmed enabled.** `registry.json.meta.catalog_url` points to `vibe-researcher.github.io`. Either enable Pages before any external link, or edit `registry.json` to null the URL. I deliberately didn't advertise the catalog URL in the new README to avoid a 404.
-- **`generate_catalog.py` overwrites `catalog-skill/SKILL.md`.** I did **not** run it — the existing hand-crafted pointer is preserved. Run it only after deciding how to reconcile.
+- **~~`generate_catalog.py` overwrites `catalog-skill/SKILL.md`.~~** Resolved. Ran the generator, the automatic version has full OpenJudge metadata inline (better for agents — no URL round-trip to discover contents), added AUTO-GENERATED markers in both frontmatter and HTML comments so future hand-edits get redirected to `registry.json`. Committed in `479e358`.
+- **GitHub Pages enablement.** You asked to turn this on — five manual steps below. Everything code-side is ready: `docs/catalog/SKILL.txt` is built and committed; `.github/workflows/deploy-catalog.yml` has been on `main` since 2026-04-10 and will trigger on push to `main` that touches `registry.json`, `published/**`, or the generator itself.
+
+  1. `git checkout main && git merge redesign/community-first-2026-04-24 && git push origin main` — the branch needs to land on `main` for the workflow to fire.
+  2. GitHub → repo → **Settings → Pages**. Under "Source", pick **"GitHub Actions"** (not "Deploy from a branch" — the workflow is Actions-based and `upload-pages-artifact`-driven).
+  3. GitHub → **Actions** tab. Watch the "Deploy Catalog to GitHub Pages" run triggered by the merge push. It takes ~1 minute. If it doesn't trigger automatically (path filters), hit **"Run workflow"** manually (`workflow_dispatch` is enabled).
+  4. After green: visit `https://vibe-researcher.github.io/skill-anything/SKILL.txt` — expect the 1818-byte markdown catalog (served as `.txt` so agents can fetch it without MIME negotiation).
+  5. Once live, optionally add a one-liner to README.md under Gallery: `**Live catalog:** https://vibe-researcher.github.io/skill-anything/SKILL.txt`. Deliberately omitted tonight to avoid shipping a 404.
+
 - **Hero GIF/asciinema** — listed in `docs/launch.md` pre-launch checklist as blocking. I physically can't record; you or a collaborator needs to.
 - **OpenJudge run used K=1 graders.** `status: beta` is appropriate. A K=3 re-run would let the score graduate to `stable`. Cost ≈ 3× current run. Roadmap item.
 
