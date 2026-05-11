@@ -1,6 +1,6 @@
 # Schemas
 
-JSON Schema (Draft 2020-12) contracts for skill-anything v2. Every cross-boundary JSON artifact produced during a distillation run is validated against one of these schemas by `scripts/osr_validate.py` (agent returns), `scripts/state_manager.py` (state files), or `scripts/deblind_and_score.py` (grader output).
+JSON Schema (Draft 2020-12) contracts for skill-anything v2. Every cross-boundary JSON artifact produced during a distillation run is validated against one of these schemas by `scripts/osr_validate.py` (agent returns), `scripts/state_manager.py` (state files), `scripts/deblind_and_score.py` (grader output after ensemble aggregation), `scripts/aggregate_grades.py` (K-grader ensemble collapse), or `scripts/overfit_check.py` (Skill Writer anti-overfitting contract).
 
 ## Why schemas exist
 
@@ -22,12 +22,13 @@ Read that last point carefully: **schemas are the information *lower bound*, not
 | `eval-task.schema.json` | One entry in `workspace/evals/eval-tasks.json` | Orchestrator before Run phase |
 | `osr-common.schema.json` | **Reference only** — describes the shared OSR contract | Humans, not code |
 | `osr-researcher.schema.json` | Researcher sub-agent return | `osr_validate.py --agent researcher` |
-| `osr-skill-writer.schema.json` | Skill Writer sub-agent return | `osr_validate.py --agent skill_writer` |
+| `osr-skill-writer.schema.json` | Skill Writer sub-agent return | `osr_validate.py --agent skill_writer`, `overfit_check.py` |
 | `osr-eval-designer.schema.json` | Eval Designer sub-agent return | `osr_validate.py --agent eval_designer` |
 | `osr-runner.schema.json` | Runner sub-agent return (one per variant) | `osr_validate.py --agent runner` |
-| `osr-grader.schema.json` | Grader sub-agent return | `osr_validate.py --agent grader` |
+| `osr-grader.schema.json` | Grader sub-agent return (K instances per iteration, default K=3) | `osr_validate.py --agent grader`, `aggregate_grades.py` |
+| *(no dedicated file)* | Investigator sub-agent return — uses `osr-common.schema.json` directly | `osr_validate.py --agent investigator` |
 
-`osr-common.schema.json` is documentation. Each agent schema inlines the common fields so the validator needs no `$ref` resolution across files. When you change common-field definitions, propagate by hand to all `osr-*` schemas and bump versions.
+`osr-common.schema.json` is documentation. Each agent schema inlines the common fields so the validator needs no `$ref` resolution across files. The Investigator agent is the exception — it carries no dedicated schema file and instead uses `osr-common.schema.json` directly (see `agents/investigator.md`). When you change common-field definitions, propagate by hand to all `osr-*` schemas and bump versions.
 
 ## OSR contract (all agents)
 
@@ -53,6 +54,19 @@ A schema change should be accompanied by:
 1. A version bump in all affected schemas.
 2. An update to the corresponding agent markdown file in `agents/`.
 3. If the change affects on-disk files (state, iteration, events), a migration path in `state_migrate.py`.
+
+## Grader ensemble
+
+The Grade phase runs **K independent Grader instances** (default K=3, auto-degrades to K=1) in physically isolated worktrees. Each instance validates its return against `osr-grader.schema.json`. `scripts/aggregate_grades.py` then collapses the K outputs into:
+
+- `blind-grader-scores.json` — majority-vote winner, median quality scores, concatenated feedback (consumed by `deblind_and_score.py` unchanged from pre-ensemble flow)
+- `ensemble-metrics.json` — agreement metrics; `disagreement_tasks` list surfaces to `invariant_check.py` as `grader_ensemble_agreement` anomalies
+
+With K=1 the aggregation is a pass-through; the downstream pipeline is identical to the single-grader flow.
+
+## Skill Writer anti-overfitting contract
+
+`osr-skill-writer.schema.json` requires every entry in `changes_applied` to carry `knowledge_source_refs` — specific line references in `knowledge/*.md` files that justify the change. `scripts/overfit_check.py` rejects any return where a change lacks source refs. An empty `knowledge_source_refs` array is treated as an overfitting signal, not a valid empty list.
 
 ## Evolution via extras
 
