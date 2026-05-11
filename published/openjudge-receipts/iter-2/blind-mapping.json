@@ -1,0 +1,50 @@
+[
+  {
+    "taskId": "grader-selection-factual-qa-vs-multidim",
+    "aIsWithSkill": true
+  },
+  {
+    "taskId": "grader-selection-tool-calls-exact-vs-llm",
+    "aIsWithSkill": false
+  },
+  {
+    "taskId": "aggregation-mixed-scales-composite",
+    "aIsWithSkill": true
+  },
+  {
+    "taskId": "aggregation-trajectory-sibling-trap",
+    "aIsWithSkill": false
+  },
+  {
+    "taskId": "rubric-workflow-with-labels",
+    "aIsWithSkill": true
+  },
+  {
+    "taskId": "rubric-workflow-cold-start-no-labels",
+    "aIsWithSkill": true
+  },
+  {
+    "taskId": "agent-eval-granularity-choice",
+    "aIsWithSkill": true
+  },
+  {
+    "taskId": "agent-eval-agenticgrader-vs-agent-graders",
+    "aIsWithSkill": false
+  },
+  {
+    "taskId": "pipeline-diagnosis-qwen-judge-issue",
+    "aIsWithSkill": false
+  },
+  {
+    "taskId": "debiasing-rm-gallery-import",
+    "aIsWithSkill": true
+  },
+  {
+    "taskId": "pipeline-synthesis-agent-eval-end-to-end",
+    "aIsWithSkill": false
+  },
+  {
+    "taskId": "pipeline-synthesis-pairwise-ab-with-reliability",
+    "aIsWithSkill": true
+  }
+]

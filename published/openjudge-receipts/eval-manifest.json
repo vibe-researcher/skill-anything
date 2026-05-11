@@ -1,0 +1,109 @@
+{
+  "manifest_version": "1.0",
+  "name": "openjudge-distillation-receipts",
+  "description": "Reproducible blind-eval audit trail for the OpenJudge skill distillation performed by skill-anything v2 harness. Includes per-iteration summaries, blind-mapping (de-blinded for public inspection), grader scores, and OSR digests. Publish reason: scientific transparency \u2014 anyone can inspect the evidence behind the Skill's claimed quality.",
+  "target_repo": "https://github.com/agentscope-ai/OpenJudge",
+  "tool": {
+    "name": "skill-anything",
+    "version": "v2-harness",
+    "commit_at_distillation": "4cc656d"
+  },
+  "published_skills": [
+    {
+      "name": "openjudge-index",
+      "path": "../openjudge-index/SKILL.md"
+    },
+    {
+      "name": "openjudge-grader-selection",
+      "path": "../openjudge-grader-selection/SKILL.md"
+    },
+    {
+      "name": "openjudge-rubric-workflow",
+      "path": "../openjudge-rubric-workflow/SKILL.md"
+    },
+    {
+      "name": "openjudge-agent-eval",
+      "path": "../openjudge-agent-eval/SKILL.md"
+    }
+  ],
+  "eval_task_file": "eval-tasks.json",
+  "eval_task_count": 12,
+  "grader_ensemble_k": 1,
+  "iterations": {
+    "iter-1": {
+      "composite_score": 0.8967,
+      "converged": false,
+      "convergence_reason": "continuing",
+      "trajectory_degraded": true,
+      "quality_regressions": [],
+      "weakest_tasks": [
+        "grader-selection-factual-qa-vs-multidim",
+        "grader-selection-tool-calls-exact-vs-llm"
+      ],
+      "per_task_count": 12
+    },
+    "iter-2": {
+      "composite_score": 0.9167,
+      "converged": true,
+      "convergence_reason": "score_converged",
+      "trajectory_degraded": true,
+      "quality_regressions": [
+        {
+          "taskId": "rubric-workflow-with-labels",
+          "delta": -0.1
+        }
+      ],
+      "weakest_tasks": [
+        "grader-selection-factual-qa-vs-multidim",
+        "grader-selection-tool-calls-exact-vs-llm"
+      ],
+      "per_task_count": 12
+    }
+  },
+  "best_iteration": "iter-2",
+  "best_composite": 0.9167,
+  "honest_caveats": [
+    "iter-2 is the KEPT state; iter-3 (composite 0.7792) was a regression and is NOT published.",
+    "quality_regressions[rubric-workflow-with-labels]=-0.1 at iter-2 \u2014 see iteration-summary.json.",
+    "trajectory_degraded=true at iter-2: all 12 tasks had trajectoryAvailable=false (runners did not emit tool-call counts in the Super-Runner mode this run used). Quality-only signal.",
+    "8 pending_surprises from research phase were not resolved in this run \u2014 see docs/lessons-learned-openjudge-2026-04-23.md.",
+    "grader_ensemble_k=1 (single grader, cost trade-off) rather than the recommended K=3. This is a conscious cost/signal trade; multi-grader rerun is future work."
+  ],
+  "reproducibility": {
+    "how_to_re_run": "1. Clone skill-anything and check out the commit in tool.commit_at_distillation. 2. `git clone https://github.com/agentscope-ai/OpenJudge workspace/repo`. 3. Open skill-anything in Claude Code and say: 'Resume distillation from workspace/'. 4. Compare new iter-N/iteration-summary.json against this manifest.",
+    "blind_eval_protocol": "See references/eval-loop.md for full run/blind/grade/score/improve protocol.",
+    "grader_rationale_file": "iter-2/grader-scores.json \u2014 contains the per-task quality score, feedback, and suggestions used for scoring.",
+    "blind_mapping_file": "iter-2/blind-mapping.json \u2014 the A/B \u2192 with-Skill/without-Skill mapping randomized at eval time; published post-eval for inspection."
+  },
+  "files": {
+    "eval-tasks.json": {
+      "size_bytes": 18813,
+      "sha256_16": "84fa045fe3cde768"
+    },
+    "iter-1/iteration-summary.json": {
+      "size_bytes": 8647,
+      "sha256_16": "d3999bb1915fd525"
+    },
+    "iter-2/blind-grader-scores.json": {
+      "size_bytes": 39574,
+      "sha256_16": "ce9f61acd0d78d14"
+    },
+    "iter-2/blind-mapping.json": {
+      "size_bytes": 1061,
+      "sha256_16": "49757447bc643aa2"
+    },
+    "iter-2/grader-scores.json": {
+      "size_bytes": 41600,
+      "sha256_16": "39c79df2e9536d7a"
+    },
+    "iter-2/iteration-summary.json": {
+      "size_bytes": 8717,
+      "sha256_16": "5b9beab2c3d6789f"
+    },
+    "iter-2/osr-grader-digest.json": {
+      "size_bytes": 6210,
+      "sha256_16": "1a7e2400fa08d5df"
+    }
+  },
+  "generated_at": "2026-04-23T17:23:35.446834+00:00"
+}

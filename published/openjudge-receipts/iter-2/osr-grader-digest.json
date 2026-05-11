@@ -1,0 +1,204 @@
+{
+  "iteration": 2,
+  "composite_score": 0.9167,
+  "converged": true,
+  "convergence_reason": "score_converged",
+  "trajectory_degraded": true,
+  "trajectory_available_ratio": 0.0,
+  "scores_file": "/Users/chr/Dev/skill-anything/workspace/evals/results/iter-2/grader-scores.json",
+  "per_task": [
+    {
+      "task_id": "grader-selection-factual-qa-vs-multidim",
+      "composite": 0.86,
+      "quality": 4.3,
+      "winner": "A",
+      "skill_won": "yes",
+      "tool_count_with": 19,
+      "tool_count_without": 18,
+      "trajectory_available": false,
+      "feedback_ref": {
+        "file": "/Users/chr/Dev/skill-anything/workspace/evals/results/iter-2/grader-scores.json",
+        "task_id": "grader-selection-factual-qa-vs-multidim"
+      }
+    },
+    {
+      "task_id": "grader-selection-tool-calls-exact-vs-llm",
+      "composite": 0.9,
+      "quality": 4.5,
+      "winner": "B",
+      "skill_won": "yes",
+      "tool_count_with": 19,
+      "tool_count_without": 18,
+      "trajectory_available": false,
+      "feedback_ref": {
+        "file": "/Users/chr/Dev/skill-anything/workspace/evals/results/iter-2/grader-scores.json",
+        "task_id": "grader-selection-tool-calls-exact-vs-llm"
+      }
+    },
+    {
+      "task_id": "aggregation-mixed-scales-composite",
+      "composite": 0.94,
+      "quality": 4.7,
+      "winner": "A",
+      "skill_won": "yes",
+      "tool_count_with": 19,
+      "tool_count_without": 18,
+      "trajectory_available": false,
+      "feedback_ref": {
+        "file": "/Users/chr/Dev/skill-anything/workspace/evals/results/iter-2/grader-scores.json",
+        "task_id": "aggregation-mixed-scales-composite"
+      }
+    },
+    {
+      "task_id": "aggregation-trajectory-sibling-trap",
+      "composite": 0.92,
+      "quality": 4.6,
+      "winner": "B",
+      "skill_won": "yes",
+      "tool_count_with": 19,
+      "tool_count_without": 18,
+      "trajectory_available": false,
+      "feedback_ref": {
+        "file": "/Users/chr/Dev/skill-anything/workspace/evals/results/iter-2/grader-scores.json",
+        "task_id": "aggregation-trajectory-sibling-trap"
+      }
+    },
+    {
+      "task_id": "rubric-workflow-with-labels",
+      "composite": 0.92,
+      "quality": 4.6,
+      "winner": "A",
+      "skill_won": "yes",
+      "tool_count_with": 19,
+      "tool_count_without": 18,
+      "trajectory_available": false,
+      "feedback_ref": {
+        "file": "/Users/chr/Dev/skill-anything/workspace/evals/results/iter-2/grader-scores.json",
+        "task_id": "rubric-workflow-with-labels"
+      }
+    },
+    {
+      "task_id": "rubric-workflow-cold-start-no-labels",
+      "composite": 0.9,
+      "quality": 4.5,
+      "winner": "A",
+      "skill_won": "yes",
+      "tool_count_with": 19,
+      "tool_count_without": 18,
+      "trajectory_available": false,
+      "feedback_ref": {
+        "file": "/Users/chr/Dev/skill-anything/workspace/evals/results/iter-2/grader-scores.json",
+        "task_id": "rubric-workflow-cold-start-no-labels"
+      }
+    },
+    {
+      "task_id": "agent-eval-granularity-choice",
+      "composite": 0.92,
+      "quality": 4.6,
+      "winner": "A",
+      "skill_won": "yes",
+      "tool_count_with": 19,
+      "tool_count_without": 18,
+      "trajectory_available": false,
+      "feedback_ref": {
+        "file": "/Users/chr/Dev/skill-anything/workspace/evals/results/iter-2/grader-scores.json",
+        "task_id": "agent-eval-granularity-choice"
+      }
+    },
+    {
+      "task_id": "agent-eval-agenticgrader-vs-agent-graders",
+      "composite": 0.92,
+      "quality": 4.6,
+      "winner": "B",
+      "skill_won": "yes",
+      "tool_count_with": 19,
+      "tool_count_without": 18,
+      "trajectory_available": false,
+      "feedback_ref": {
+        "file": "/Users/chr/Dev/skill-anything/workspace/evals/results/iter-2/grader-scores.json",
+        "task_id": "agent-eval-agenticgrader-vs-agent-graders"
+      }
+    },
+    {
+      "task_id": "pipeline-diagnosis-qwen-judge-issue",
+      "composite": 0.94,
+      "quality": 4.7,
+      "winner": "B",
+      "skill_won": "yes",
+      "tool_count_with": 19,
+      "tool_count_without": 18,
+      "trajectory_available": false,
+      "feedback_ref": {
+        "file": "/Users/chr/Dev/skill-anything/workspace/evals/results/iter-2/grader-scores.json",
+        "task_id": "pipeline-diagnosis-qwen-judge-issue"
+      }
+    },
+    {
+      "task_id": "debiasing-rm-gallery-import",
+      "composite": 0.92,
+      "quality": 4.6,
+      "winner": "A",
+      "skill_won": "yes",
+      "tool_count_with": 19,
+      "tool_count_without": 18,
+      "trajectory_available": false,
+      "feedback_ref": {
+        "file": "/Users/chr/Dev/skill-anything/workspace/evals/results/iter-2/grader-scores.json",
+        "task_id": "debiasing-rm-gallery-import"
+      }
+    },
+    {
+      "task_id": "pipeline-synthesis-agent-eval-end-to-end",
+      "composite": 0.94,
+      "quality": 4.7,
+      "winner": "B",
+      "skill_won": "yes",
+      "tool_count_with": 19,
+      "tool_count_without": 18,
+      "trajectory_available": false,
+      "feedback_ref": {
+        "file": "/Users/chr/Dev/skill-anything/workspace/evals/results/iter-2/grader-scores.json",
+        "task_id": "pipeline-synthesis-agent-eval-end-to-end"
+      }
+    },
+    {
+      "task_id": "pipeline-synthesis-pairwise-ab-with-reliability",
+      "composite": 0.92,
+      "quality": 4.6,
+      "winner": "A",
+      "skill_won": "yes",
+      "tool_count_with": 19,
+      "tool_count_without": 18,
+      "trajectory_available": false,
+      "feedback_ref": {
+        "file": "/Users/chr/Dev/skill-anything/workspace/evals/results/iter-2/grader-scores.json",
+        "task_id": "pipeline-synthesis-pairwise-ab-with-reliability"
+      }
+    }
+  ],
+  "aggregate": {
+    "winner_dist": {
+      "A": 7,
+      "B": 5,
+      "TIE": 0
+    },
+    "skill_won_rate": 1.0,
+    "quality_range": [
+      4.3,
+      4.7
+    ]
+  },
+  "composite_regressions": [],
+  "quality_regressions": [
+    {
+      "taskId": "rubric-workflow-with-labels",
+      "delta": -0.1
+    }
+  ],
+  "regressions": [],
+  "rollback_recommendation": "quality_regressed",
+  "weakest_tasks": [
+    "grader-selection-factual-qa-vs-multidim",
+    "grader-selection-tool-calls-exact-vs-llm"
+  ]
+}

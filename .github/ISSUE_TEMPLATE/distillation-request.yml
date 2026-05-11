@@ -1,0 +1,62 @@
+name: Distillation Request
+description: Nominate a GitHub repo as a skill-anything distillation target.
+title: "[Distill] <repo-name>"
+labels: ["distillation-request"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for nominating a target. The best candidates are repos where **tacit knowledge hurts agents in practice**:
+        training data is outdated, gotchas are silent, or version-specific behavior dominates support questions.
+
+  - type: input
+    id: repo
+    attributes:
+      label: Target repo URL
+      description: The GitHub URL of the repo to distill.
+      placeholder: https://github.com/org/name
+    validations:
+      required: true
+
+  - type: textarea
+    id: why
+    attributes:
+      label: Why this repo? What tacit knowledge does it have?
+      description: |
+        Good reasons: recent breaking rename, silent-failure APIs, non-obvious composition patterns, version-specific gotchas, undocumented conventions.
+        Weak reasons: "it's popular", "the docs are bad" (often solvable by reading docs).
+      placeholder: |
+        e.g. "Pydantic v2 broke most v1 patterns; agents still write v1 code by default. Mode mismatch between ConfigDict and model_config is silent. field_validator signature changed."
+    validations:
+      required: true
+
+  - type: textarea
+    id: examples
+    attributes:
+      label: Example tasks an agent should do better with this Skill
+      description: 2-4 concrete prompts where you'd expect the Skill to improve agent output.
+      placeholder: |
+        - "Migrate this v1 model to v2."
+        - "Why is model_validate silently producing the wrong types here?"
+        - "Choose between Annotated[...] vs Field(...) for this validator."
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Target version / tag (optional)
+      description: If upstream has multiple live majors, specify which one.
+      placeholder: e.g. v2.10.x
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Confirmations
+      options:
+        - label: I've searched existing issues to avoid duplicates.
+          required: true
+        - label: The target repo is public (distillation requires repo access).
+          required: true
+        - label: I understand this is a nomination — actual distillation is prioritized by value + novelty + feasibility, not FIFO.
+          required: true

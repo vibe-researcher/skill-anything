@@ -67,6 +67,49 @@ def _cp_tree(src: Path, dst: Path) -> dict:
     return {"source": str(src), "dest": str(dst), "status": "copied", "files": count}
 
 
+# Files that a Grader must never see — their mere presence in the worktree
+# destroys blinding. Matched by *basename anywhere under work_path*.
+GRADER_CRITICAL_LEAK_FILES = frozenset({
+    "blind-mapping.json",
+    "eval-results.json",
+    "grader-scores.json",        # prev-iter raw scores are also a leak
+    "per-task-tool-counts.json", # reveals A/B identity via tool counts
+})
+
+# Top-level paths a Grader worktree must never contain, regardless of
+# what --include was asked for. Added to exclude_guard implicitly.
+GRADER_IMPLICIT_GUARDS = frozenset({
+    "skills",
+    "state",
+    ".worktrees",
+})
+
+
+def _is_grader_purpose(purpose: str) -> bool:
+    return purpose.startswith("grader-") or purpose.startswith("grader_")
+
+
+def _purge_critical_leaks(work_path: Path, leak_names: frozenset) -> list[str]:
+    """Recursively remove files whose basename matches leak_names.
+    Returns list of removed paths (relative to work_path)."""
+    removed = []
+    for p in work_path.rglob("*"):
+        if p.is_file() and p.name in leak_names:
+            rel = p.relative_to(work_path)
+            p.unlink()
+            removed.append(str(rel))
+    return removed
+
+
+def _scan_critical_leaks(work_path: Path, leak_names: frozenset) -> list[str]:
+    """Read-only check: return matching paths if any, else []."""
+    return [
+        str(p.relative_to(work_path))
+        for p in work_path.rglob("*")
+        if p.is_file() and p.name in leak_names
+    ]
+
+
 def _worktrees_root(ws: Path) -> Path:
     return ws / ".worktrees"
 
@@ -87,6 +130,14 @@ def cmd_create(args) -> dict:
 
     includes = [x.strip() for x in args.include.split(",") if x.strip()]
     exclude_guards = [x.strip() for x in (args.exclude_guard or "").split(",") if x.strip()]
+    exclude_paths = [x.strip() for x in (args.exclude_path or "").split(",") if x.strip()]
+
+    # Grader preset: auto-add implicit guards + critical-leak scrub
+    is_grader = _is_grader_purpose(args.purpose)
+    if is_grader:
+        for g in GRADER_IMPLICIT_GUARDS:
+            if g not in exclude_guards:
+                exclude_guards.append(g)
 
     # Validate: none of excluded guards may appear in includes
     conflict = set(includes) & set(exclude_guards)
@@ -119,6 +170,28 @@ def cmd_create(args) -> dict:
         entry = _cp_tree(src, dst)
         manifest["includes"].append(entry)
 
+    # --exclude-path: delete glob-matched files from the copied tree
+    purged_by_exclude_path = []
+    for pattern in exclude_paths:
+        for match in work_path.rglob(pattern):
+            if match.is_file():
+                rel = match.relative_to(work_path)
+                match.unlink()
+                purged_by_exclude_path.append(str(rel))
+            elif match.is_dir():
+                rel = match.relative_to(work_path)
+                shutil.rmtree(match)
+                purged_by_exclude_path.append(str(rel) + "/")
+    manifest["exclude_paths"] = exclude_paths
+    manifest["purged_by_exclude_path"] = purged_by_exclude_path
+
+    # Grader preset: purge critical-leak files that the copy pulled in
+    purged_critical = []
+    if is_grader:
+        purged_critical = _purge_critical_leaks(work_path, GRADER_CRITICAL_LEAK_FILES)
+        manifest["grader_preset"] = True
+        manifest["purged_critical_leaks"] = purged_critical
+
     # Post-validation: ensure exclude_guards are truly absent
     leaks = []
     for guard in exclude_guards:
@@ -128,6 +201,22 @@ def cmd_create(args) -> dict:
         # Clean up; this is fatal
         shutil.rmtree(work_path, ignore_errors=True)
         raise SystemExit(f"exclude_guard leak: {leaks} present in work_path")
+
+    # Critical-leak backstop: anywhere-under-tree scan for the critical
+    # filenames. Applies to every worktree regardless of purpose — if
+    # blind-mapping.json ends up in any worktree, that's a bug.
+    remaining = _scan_critical_leaks(work_path, GRADER_CRITICAL_LEAK_FILES)
+    if remaining and not is_grader:
+        # For non-grader purposes these files may legitimately be present
+        # (e.g. eval-designer has evals/), but for grader they must be gone.
+        # Non-grader: just log, do not fail.
+        manifest["critical_files_present"] = remaining
+    elif remaining:
+        shutil.rmtree(work_path, ignore_errors=True)
+        raise SystemExit(
+            f"grader critical-leak check failed: {remaining} still present "
+            f"after purge. This is a bug in worktree_helper — do not proceed."
+        )
 
     # Write the manifest
     manifest_path = work_path / ".isolation.json"
@@ -214,6 +303,11 @@ def build_parser() -> argparse.ArgumentParser:
     pc.add_argument("--exclude-guard", default="",
                     help="Comma-separated list of subdirs that MUST NOT appear "
                          "in the resulting work_path. Fails loudly if they do.")
+    pc.add_argument("--exclude-path", default="",
+                    help="Comma-separated glob patterns (relative to work_path) "
+                         "to delete after copy. Unlike --exclude-guard this can "
+                         "target files nested inside included trees (e.g. "
+                         "'evals/**/blind-mapping.json').")
 
     pl = sub.add_parser("list")
     pl.add_argument("--workspace", required=True)
